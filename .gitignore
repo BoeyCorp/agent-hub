@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.tmp
+*.bak
+cache/
+.DS_Store
