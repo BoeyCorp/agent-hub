@@ -18,6 +18,11 @@ BarWidget {
   property string settingsStatusText: ""
   property bool refreshFlash: false
   property double nowMs: Date.now()
+  onPopupOpenChanged: {
+    if (popupOpen) {
+      root.nowMs = Date.now()
+    }
+  }
 
   readonly property color foreground: (bar && bar.foreground) ? bar.foreground : (Color.foreground || "#D8DEE9")
   readonly property color background: (Color.popups && Color.popups.background) ? Color.popups.background : "#1E1E2E"
@@ -162,6 +167,30 @@ BarWidget {
       if (isNaN(d.getTime())) return ""
       return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     } catch (e) { return "" }
+  }
+
+  function formatCountdown(resetsAt) {
+    if (!resetsAt) return ""
+    var ms = new Date(resetsAt).getTime()
+    if (!isFinite(ms)) return ""
+    var diff = ms - root.nowMs
+    if (diff <= 0) return "Resets now"
+    var minutes = Math.floor(diff / 60000)
+    var hours = Math.floor(minutes / 60)
+    var days = Math.floor(hours / 24)
+    if (days > 0) return "Resets in " + days + "d " + (hours % 24) + "h"
+    if (hours > 0) return "Resets in " + hours + "h " + (minutes % 60) + "m"
+    return "Resets in " + Math.max(1, minutes) + "m"
+  }
+
+  function formatResetText(resetsAt) {
+    if (!resetsAt) return ""
+    var cd = root.formatCountdown(resetsAt)
+    var exact = root.formatExactResetTime(resetsAt)
+    if (cd && exact) return cd + " - " + exact
+    if (cd) return cd
+    if (exact) return "Resets " + exact
+    return ""
   }
 
   function alpha(c, a) {
@@ -1193,9 +1222,9 @@ BarWidget {
               }
 
               Text {
-                visible: Boolean(modelData.resetTime && modelData.resetTime.length > 0)
+                visible: Boolean((modelData.resetTime || modelData.resetsAt || modelData.reset_time) && String(modelData.resetTime || modelData.resetsAt || modelData.reset_time).length > 0)
                 textFormat: Text.PlainText
-                text: "Resets " + root.formatExactResetTime(modelData.resetTime)
+                text: root.formatResetText(modelData.resetTime || modelData.resetsAt || modelData.reset_time)
                 color: root.dim
                 font.family: root.fontFamily
                 font.pixelSize: 8
@@ -1688,6 +1717,31 @@ BarWidget {
                     width: parent.width * Math.max(0.0, Math.min(1.0, Number(modelData.remainingFraction || 0)))
                     radius: 2
                     color: modelData.remainingPercent <= 15 ? root.urgent : agentColor
+                  }
+                }
+
+                // Sub-info: Reset and forecast
+                RowLayout {
+                  Layout.fillWidth: true
+                  spacing: 4
+
+                  Text {
+                    textFormat: Text.PlainText
+                    text: modelData.forecastText || ""
+                    color: modelData.forecastStatus === "critical" ? root.urgent : (modelData.forecastStatus === "warning" ? "#F59E0B" : root.dim)
+                    font.family: root.fontFamily
+                    font.pixelSize: 8
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                  }
+
+                  Text {
+                    visible: Boolean((modelData.resetTime || modelData.resetsAt || modelData.reset_time) && String(modelData.resetTime || modelData.resetsAt || modelData.reset_time).length > 0)
+                    textFormat: Text.PlainText
+                    text: root.formatResetText(modelData.resetTime || modelData.resetsAt || modelData.reset_time)
+                    color: root.dim
+                    font.family: root.fontFamily
+                    font.pixelSize: 8
                   }
                 }
               }
