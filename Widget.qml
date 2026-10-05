@@ -164,8 +164,14 @@ BarWidget {
     } catch (e) { return "" }
   }
 
-  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
-  function alpha(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
+  function alpha(c, a) {
+    try {
+      var col = Qt.color(c)
+      return Qt.rgba(col.r, col.g, col.b, a)
+    } catch (e) {
+      return c
+    }
+  }
 
   function agentColor(agentId) {
     return agentId === "antigravity" ? "#38BDF8" : "#D97757"
@@ -813,6 +819,10 @@ BarWidget {
     property string title: ""
     property string subtitle: ""
     property color titleColor: root.foreground
+    property string icon: ""
+    property string badgeText: ""
+    property color badgeColor: root.accent
+    property color badgeTextColor: badgeColor
     property Component headerAccessory: null
     default property alias content: body.data
 
@@ -836,9 +846,19 @@ BarWidget {
       spacing: 6
 
       RowLayout {
-        visible: section.title !== "" || section.headerAccessory !== null
+        visible: section.title !== "" || section.headerAccessory !== null || section.icon !== "" || section.badgeText !== ""
         Layout.fillWidth: true
         spacing: 6
+
+        Image {
+          visible: section.icon !== ""
+          source: section.icon !== "" ? Qt.resolvedUrl(section.icon) : ""
+          sourceSize.width: 14
+          sourceSize.height: 14
+          Layout.preferredWidth: 14
+          Layout.preferredHeight: 14
+          fillMode: Image.PreserveAspectFit
+        }
 
         Text {
           visible: section.title !== ""
@@ -849,6 +869,28 @@ BarWidget {
           font.family: root.fontFamily
           font.pixelSize: 11
           font.bold: true
+        }
+
+        Rectangle {
+          visible: section.badgeText !== ""
+          radius: 3
+          color: root.alpha(section.badgeColor, 0.15)
+          border.color: root.alpha(section.badgeColor, 0.35)
+          border.width: 1
+          implicitHeight: 18
+          implicitWidth: badgeLabel.implicitWidth + 10
+          Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
+
+          Text {
+            id: badgeLabel
+            anchors.centerIn: parent
+            textFormat: Text.PlainText
+            text: section.badgeText
+            color: section.badgeTextColor
+            font.family: root.fontFamily
+            font.pixelSize: 8
+            font.bold: true
+          }
         }
 
         Loader {
@@ -904,6 +946,263 @@ BarWidget {
         font.family: root.fontFamily
         font.pixelSize: 8
         Layout.alignment: Qt.AlignHCenter
+      }
+    }
+  }
+
+  component SessionItem: Rectangle {
+    id: sItem
+    property var sessionData: null
+    property color tagColor: root.accent
+    property string tagLabel: ""
+
+    Layout.fillWidth: true
+    implicitHeight: rowCol.implicitHeight + 8
+    radius: 3
+    color: sMouse.containsMouse ? root.cardHover : "transparent"
+
+    MouseArea {
+      id: sMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: {
+        if (sItem.sessionData) {
+          root.resumeSession(sItem.sessionData.agentId, sItem.sessionData.conversationId, sItem.sessionData.workspace)
+        }
+      }
+    }
+
+    ColumnLayout {
+      id: rowCol
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      anchors.margins: 4
+      spacing: 2
+
+      RowLayout {
+        Layout.fillWidth: true
+        spacing: 4
+
+        Rectangle {
+          visible: sItem.tagLabel !== ""
+          radius: 2
+          color: sItem.tagColor
+          Layout.preferredHeight: 12
+          Layout.preferredWidth: aTagText.implicitWidth + 6
+
+          Text {
+            id: aTagText
+            anchors.centerIn: parent
+            textFormat: Text.PlainText
+            text: sItem.tagLabel
+            color: "#FFFFFF"
+            font.family: root.fontFamily
+            font.pixelSize: 7
+            font.bold: true
+          }
+        }
+
+        Text {
+          textFormat: Text.PlainText
+          text: sItem.sessionData ? (sItem.sessionData.preview || sItem.sessionData.title || "Session") : "Session"
+          color: sMouse.containsMouse ? root.accent : root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: 10
+          font.bold: true
+          elide: Text.ElideRight
+          Layout.fillWidth: true
+        }
+
+        // Active badge & Kill button
+        RowLayout {
+          spacing: 4
+
+          Rectangle {
+            visible: Boolean(sItem.sessionData && sItem.sessionData.isActive)
+            radius: 2
+            color: kMouse.containsMouse ? root.urgent : root.track
+            Layout.preferredHeight: 12
+            Layout.preferredWidth: 12
+
+            Text {
+              anchors.centerIn: parent
+              textFormat: Text.PlainText
+              text: ""
+              color: "#FFFFFF"
+              font.family: root.fontFamily
+              font.pixelSize: 7
+            }
+
+            MouseArea {
+              id: kMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: function(mouse) {
+                mouse.accepted = true
+                if (sItem.sessionData) {
+                  root.killSession(sItem.sessionData.agentId, sItem.sessionData.conversationId)
+                }
+              }
+            }
+          }
+
+          Rectangle {
+            radius: 2
+            color: (sItem.sessionData && sItem.sessionData.isActive) ? "#10B981" : root.track
+            Layout.preferredHeight: 12
+            Layout.preferredWidth: sTagText.implicitWidth + 6
+
+            Text {
+              id: sTagText
+              anchors.centerIn: parent
+              textFormat: Text.PlainText
+              text: (sItem.sessionData && sItem.sessionData.isActive) ? "ACTIVE" : "IDLE"
+              color: (sItem.sessionData && sItem.sessionData.isActive) ? "#FFFFFF" : root.dim
+              font.family: root.fontFamily
+              font.pixelSize: 7
+              font.bold: true
+            }
+          }
+        }
+      }
+
+      RowLayout {
+        Layout.fillWidth: true
+        spacing: 4
+
+        Text {
+          textFormat: Text.PlainText
+          text: " " + (sItem.sessionData ? (sItem.sessionData.workspaceName || "Workspace") : "Workspace")
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: 8
+          elide: Text.ElideRight
+          Layout.fillWidth: true
+        }
+
+        Text { textFormat: Text.PlainText; text: "·"; color: root.dim; font.pixelSize: 8 }
+
+        Text {
+          textFormat: Text.PlainText
+          text: (sItem.sessionData ? (sItem.sessionData.stepCount || 0) : 0) + " steps"
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: 8
+        }
+      }
+    }
+  }
+
+  component QuotaGroupView: ColumnLayout {
+    id: qGroupView
+    property var quotaGroups: []
+    Layout.fillWidth: true
+    spacing: 6
+
+    Repeater {
+      model: qGroupView.quotaGroups || []
+      delegate: ColumnLayout {
+        required property var modelData
+        Layout.fillWidth: true
+        spacing: 3
+
+        Text {
+          visible: Boolean(modelData.name && modelData.name.length > 0)
+          textFormat: Text.PlainText
+          text: modelData.name || "Quota Group"
+          color: modelData.color || root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: 9
+          font.bold: true
+        }
+
+        Repeater {
+          model: modelData.buckets || []
+          delegate: ColumnLayout {
+            required property var modelData
+            Layout.fillWidth: true
+            spacing: 2
+
+            RowLayout {
+              Layout.fillWidth: true
+              spacing: 4
+
+              Text {
+                textFormat: Text.PlainText
+                text: modelData.label || modelData.name || "Limit"
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: 10
+                Layout.fillWidth: true
+              }
+
+              Text {
+                visible: Boolean(modelData.burnRateText && modelData.burnRateText.length > 0)
+                textFormat: Text.PlainText
+                text: "🔥 " + modelData.burnRateText
+                color: modelData.forecastStatus === "critical" ? root.urgent : (modelData.forecastStatus === "warning" ? "#F59E0B" : root.dim)
+                font.family: root.fontFamily
+                font.pixelSize: 8
+                font.bold: true
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                text: (modelData.remainingPercent !== undefined ? modelData.remainingPercent : Math.round(Number(modelData.remainingFraction || 0) * 100)) + "% left"
+                color: Number(modelData.remainingPercent || 0) <= 15 ? root.urgent : root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: 9
+                font.bold: true
+              }
+            }
+
+            // Progress Bar
+            Rectangle {
+              Layout.fillWidth: true
+              Layout.preferredHeight: 5
+              radius: 2
+              color: root.track
+              clip: true
+
+              Rectangle {
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: parent.width * Math.max(0.0, Math.min(1.0, Number(modelData.remainingFraction !== undefined ? modelData.remainingFraction : (Number(modelData.remainingPercent || 0) / 100.0))))
+                radius: 2
+                color: Number(modelData.remainingPercent || 0) <= 15 ? root.urgent : (modelData.color || root.accent)
+              }
+            }
+
+            // Sub-info: Reset and forecast
+            RowLayout {
+              Layout.fillWidth: true
+              spacing: 4
+
+              Text {
+                textFormat: Text.PlainText
+                text: modelData.forecastText || ""
+                color: modelData.forecastStatus === "critical" ? root.urgent : (modelData.forecastStatus === "warning" ? "#F59E0B" : root.dim)
+                font.family: root.fontFamily
+                font.pixelSize: 8
+                elide: Text.ElideRight
+                Layout.fillWidth: true
+              }
+
+              Text {
+                visible: Boolean(modelData.resetTime && modelData.resetTime.length > 0)
+                textFormat: Text.PlainText
+                text: "Resets " + root.formatExactResetTime(modelData.resetTime)
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: 8
+              }
+            }
+          }
+        }
       }
     }
   }
@@ -975,7 +1274,7 @@ BarWidget {
 
           Text {
             textFormat: Text.PlainText
-            text: "Total Prompts: " + usageMain.formatNumber(provider ? provider.totalPrompts : 0)
+            text: "Total: " + usageMain.formatNumber(provider ? provider.totalPrompts : 0) + " prompts"
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: 9
@@ -984,270 +1283,217 @@ BarWidget {
       }
     }
 
-    // Consolidated Quota Card
+    // --- CLAUDE CODE DEDICATED SECTION ---
     SectionCard {
-      title: "Quota Limits & Reset Forecasting"
-      subtitle: "Hourly consumption burn rates and reset projections"
-      visible: Boolean(provider && provider.quotaGroups && provider.quotaGroups.length > 0)
+      title: "Claude Code"
+      titleColor: "#D97757"
+      icon: "assets/claude.svg"
+      badgeText: (provider && provider.claudeData && provider.claudeData.currentModel) ? provider.claudeData.currentModel : "Claude"
+      badgeColor: "#D97757"
+      subtitle: {
+        var c = provider ? provider.claudeData : null
+        var activeN = (provider && provider.activeAgentCounts) ? (provider.activeAgentCounts.claude || 0) : 0
+        if (activeN > 0) {
+          return "Active (" + activeN + " session" + (activeN > 1 ? "s" : "") + " running) • Anthropic Claude Code"
+        }
+        return "Anthropic Claude Code CLI"
+      }
 
       ColumnLayout {
         Layout.fillWidth: true
         spacing: 8
 
-        Repeater {
-          model: provider ? provider.quotaGroups : []
-          delegate: ColumnLayout {
-            required property var modelData
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: 6
+
+          StatBlock {
+            value: provider ? usageMain.formatNumber(provider.claudeData.todayPrompts || 0) : "0"
+            label: "prompts"
+          }
+          StatBlock {
+            value: provider ? usageMain.formatNumber(provider.claudeData.todaySteps || 0) : "0"
+            label: "steps"
+          }
+          StatBlock {
+            value: provider ? usageMain.formatNumber(provider.claudeData.todayTotalTokens || 0) : "0"
+            label: "tokens"
+            valColor: "#D97757"
+          }
+          StatBlock {
+            value: provider ? String(provider.claudeData.todaySessions || 0) : "0"
+            label: "sessions"
+          }
+        }
+
+        // Claude Quotas
+        ColumnLayout {
+          Layout.fillWidth: true
+          spacing: 4
+          visible: Boolean(provider && provider.claudeData && provider.claudeData.quotaGroups && provider.claudeData.quotaGroups.length > 0)
+
+          Text {
+            textFormat: Text.PlainText
+            text: "Quota Limits & Reset Forecasting"
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: 8
+            font.bold: true
+          }
+
+          QuotaGroupView {
+            quotaGroups: (provider && provider.claudeData) ? (provider.claudeData.quotaGroups || []) : []
+          }
+        }
+
+        // Claude Recent Sessions
+        ColumnLayout {
+          Layout.fillWidth: true
+          spacing: 4
+          visible: Boolean(provider && provider.claudeData && provider.claudeData.recentSessions && provider.claudeData.recentSessions.length > 0)
+
+          RowLayout {
             Layout.fillWidth: true
             spacing: 4
 
             Text {
               textFormat: Text.PlainText
-              text: modelData.name || "Quota Group"
-              color: modelData.color || root.foreground
+              text: "Recent Claude Sessions"
+              color: root.dim
               font.family: root.fontFamily
-              font.pixelSize: 9
+              font.pixelSize: 8
               font.bold: true
+              Layout.fillWidth: true
             }
 
-            Repeater {
-              model: modelData.buckets || []
-              delegate: ColumnLayout {
-                required property var modelData
-                Layout.fillWidth: true
-                spacing: 2
+            Text {
+              textFormat: Text.PlainText
+              text: "click to resume"
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: 8
+            }
+          }
 
-                RowLayout {
-                  Layout.fillWidth: true
-                  spacing: 4
-
-                  Text {
-                    textFormat: Text.PlainText
-                    text: modelData.label || modelData.name || "Limit"
-                    color: root.foreground
-                    font.family: root.fontFamily
-                    font.pixelSize: 10
-                    Layout.fillWidth: true
-                  }
-
-                  Text {
-                    visible: Boolean(modelData.burnRateText && modelData.burnRateText.length > 0)
-                    textFormat: Text.PlainText
-                    text: "🔥 " + modelData.burnRateText
-                    color: modelData.forecastStatus === "critical" ? root.urgent : (modelData.forecastStatus === "warning" ? "#F59E0B" : root.dim)
-                    font.family: root.fontFamily
-                    font.pixelSize: 8
-                    font.bold: true
-                  }
-
-                  Text {
-                    textFormat: Text.PlainText
-                    text: modelData.remainingPercent + "% left"
-                    color: modelData.remainingPercent <= 15 ? root.urgent : root.foreground
-                    font.family: root.fontFamily
-                    font.pixelSize: 9
-                    font.bold: true
-                  }
-                }
-
-                // Progress Bar
-                Rectangle {
-                  Layout.fillWidth: true
-                  Layout.preferredHeight: 6
-                  radius: 2
-                  color: root.track
-                  clip: true
-
-                  Rectangle {
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    width: parent.width * Math.max(0.0, Math.min(1.0, Number(modelData.remainingFraction || 0)))
-                    radius: 2
-                    color: modelData.remainingPercent <= 15 ? root.urgent : (modelData.color || root.accent)
-                  }
-                }
-
-                // Sub-info: Reset and forecast
-                RowLayout {
-                  Layout.fillWidth: true
-                  spacing: 4
-
-                  Text {
-                    textFormat: Text.PlainText
-                    text: modelData.forecastText || ""
-                    color: modelData.forecastStatus === "critical" ? root.urgent : (modelData.forecastStatus === "warning" ? "#F59E0B" : root.dim)
-                    font.family: root.fontFamily
-                    font.pixelSize: 8
-                    elide: Text.ElideRight
-                    Layout.fillWidth: true
-                  }
-
-                  Text {
-                    visible: Boolean(modelData.resetTime && modelData.resetTime.length > 0)
-                    textFormat: Text.PlainText
-                    text: "Resets " + root.formatExactResetTime(modelData.resetTime)
-                    color: root.dim
-                    font.family: root.fontFamily
-                    font.pixelSize: 8
-                  }
-                }
-              }
+          Repeater {
+            model: (provider && provider.claudeData && provider.claudeData.recentSessions) ? provider.claudeData.recentSessions.slice(0, 3) : []
+            delegate: SessionItem {
+              required property var modelData
+              sessionData: modelData
+              tagColor: "#D97757"
+              tagLabel: "CLAUDE"
             }
           }
         }
       }
     }
 
-    // Unified Recent Sessions
+    // --- GOOGLE ANTIGRAVITY (AGY) DEDICATED SECTION ---
     SectionCard {
-      title: "Active & Recent Sessions"
-      subtitle: "Click or press 4-9 to resume in terminal"
-      visible: Boolean(provider && provider.recentSessions && provider.recentSessions.length > 0)
+      title: "Google Antigravity (AGY)"
+      titleColor: "#38BDF8"
+      icon: "assets/antigravity.svg"
+      badgeText: (provider && provider.antigravityData && provider.antigravityData.currentModel) ? provider.antigravityData.currentModel : "Gemini"
+      badgeColor: "#38BDF8"
+      subtitle: {
+        var a = provider ? provider.antigravityData : null
+        var activeN = (provider && provider.activeAgentCounts) ? (provider.activeAgentCounts.antigravity || 0) : 0
+        if (activeN > 0) {
+          return "Active (" + activeN + " session" + (activeN > 1 ? "s" : "") + " running) • Google Antigravity"
+        }
+        return "Google Antigravity Agentic Assistant"
+      }
 
       ColumnLayout {
         Layout.fillWidth: true
-        spacing: 4
+        spacing: 8
 
-        Repeater {
-          model: provider ? (provider.recentSessions || []).slice(0, 7) : []
-          delegate: Rectangle {
-            required property var modelData
-            required property int index
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: 6
+
+          StatBlock {
+            value: provider ? usageMain.formatNumber(provider.antigravityData.todayPrompts || 0) : "0"
+            label: "prompts"
+          }
+          StatBlock {
+            value: provider ? usageMain.formatNumber(provider.antigravityData.todaySteps || 0) : "0"
+            label: "steps"
+          }
+          StatBlock {
+            value: provider ? usageMain.formatNumber(provider.antigravityData.todayTotalTokens || 0) : "0"
+            label: "tokens"
+            valColor: "#38BDF8"
+          }
+          StatBlock {
+            value: provider ? String(provider.antigravityData.todaySessions || 0) : "0"
+            label: "sessions"
+          }
+        }
+
+        // AGY Quotas
+        ColumnLayout {
+          Layout.fillWidth: true
+          spacing: 4
+          visible: Boolean(provider && provider.antigravityData && provider.antigravityData.quotaGroups && provider.antigravityData.quotaGroups.length > 0)
+
+          Text {
+            textFormat: Text.PlainText
+            text: "Quota Limits & Reset Forecasting"
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: 8
+            font.bold: true
+          }
+
+          QuotaGroupView {
+            quotaGroups: (provider && provider.antigravityData) ? (provider.antigravityData.quotaGroups || []) : []
+          }
+        }
+
+        // AGY Recent Sessions
+        ColumnLayout {
+          Layout.fillWidth: true
+          spacing: 4
+          visible: Boolean(provider && provider.antigravityData && provider.antigravityData.recentSessions && provider.antigravityData.recentSessions.length > 0)
+
+          RowLayout {
             Layout.fillWidth: true
-            implicitHeight: rowCol.implicitHeight + 6
-            radius: 3
-            color: sMouse.containsMouse ? root.cardHover : "transparent"
+            spacing: 4
 
-            MouseArea {
-              id: sMouse
-              anchors.fill: parent
-              hoverEnabled: true
-              cursorShape: Qt.PointingHandCursor
-              onClicked: root.resumeSession(modelData.agentId, modelData.conversationId, modelData.workspace)
+            Text {
+              textFormat: Text.PlainText
+              text: "Recent Antigravity Sessions"
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: 8
+              font.bold: true
+              Layout.fillWidth: true
             }
 
-            ColumnLayout {
-              id: rowCol
-              anchors.fill: parent
-              anchors.margins: 4
-              spacing: 2
+            Text {
+              textFormat: Text.PlainText
+              text: "click to resume"
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: 8
+            }
+          }
 
-              RowLayout {
-                Layout.fillWidth: true
-                spacing: 4
-
-                // Agent Pill
-                Rectangle {
-                  radius: 2
-                  color: modelData.agentColor || root.accent
-                  Layout.preferredHeight: 12
-                  Layout.preferredWidth: aTagText.implicitWidth + 6
-
-                  Text {
-                    id: aTagText
-                    anchors.centerIn: parent
-                    textFormat: Text.PlainText
-                    text: modelData.agentId === "antigravity" ? "AGY" : "CLAUDE"
-                    color: "#FFFFFF"
-                    font.family: root.fontFamily
-                    font.pixelSize: 7
-                    font.bold: true
-                  }
-                }
-
-                Text {
-                  textFormat: Text.PlainText
-                  text: modelData.preview || modelData.title || "Session"
-                  color: sMouse.containsMouse ? root.accent : root.foreground
-                  font.family: root.fontFamily
-                  font.pixelSize: 10
-                  font.bold: true
-                  elide: Text.ElideRight
-                  Layout.fillWidth: true
-                }
-
-                // Active badge & Kill
-                RowLayout {
-                  spacing: 4
-
-                  Rectangle {
-                    visible: !!modelData.isActive
-                    radius: 2
-                    color: kMouse.containsMouse ? root.urgent : root.track
-                    Layout.preferredHeight: 12
-                    Layout.preferredWidth: 12
-
-                    Text {
-                      anchors.centerIn: parent
-                      textFormat: Text.PlainText
-                      text: ""
-                      color: "#FFFFFF"
-                      font.family: root.fontFamily
-                      font.pixelSize: 7
-                    }
-
-                    MouseArea {
-                      id: kMouse
-                      anchors.fill: parent
-                      hoverEnabled: true
-                      cursorShape: Qt.PointingHandCursor
-                      onClicked: function(mouse) {
-                        mouse.accepted = true
-                        root.killSession(modelData.agentId, modelData.conversationId)
-                      }
-                    }
-                  }
-
-                  Rectangle {
-                    radius: 2
-                    color: modelData.isActive ? "#10B981" : root.track
-                    Layout.preferredHeight: 12
-                    Layout.preferredWidth: sTagText.implicitWidth + 6
-
-                    Text {
-                      id: sTagText
-                      anchors.centerIn: parent
-                      textFormat: Text.PlainText
-                      text: modelData.isActive ? "ACTIVE" : "IDLE"
-                      color: modelData.isActive ? "#FFFFFF" : root.dim
-                      font.family: root.fontFamily
-                      font.pixelSize: 7
-                      font.bold: true
-                    }
-                  }
-                }
-              }
-
-              RowLayout {
-                Layout.fillWidth: true
-                spacing: 4
-
-                Text {
-                  textFormat: Text.PlainText
-                  text: " " + (modelData.workspaceName || "Workspace")
-                  color: root.dim
-                  font.family: root.fontFamily
-                  font.pixelSize: 8
-                }
-
-                Text { textFormat: Text.PlainText; text: "·"; color: root.dim; font.pixelSize: 8 }
-
-                Text {
-                  textFormat: Text.PlainText
-                  text: modelData.stepCount + " steps"
-                  color: root.dim
-                  font.family: root.fontFamily
-                  font.pixelSize: 8
-                }
-              }
+          Repeater {
+            model: (provider && provider.antigravityData && provider.antigravityData.recentSessions) ? provider.antigravityData.recentSessions.slice(0, 3) : []
+            delegate: SessionItem {
+              required property var modelData
+              sessionData: modelData
+              tagColor: "#38BDF8"
+              tagLabel: "AGY"
             }
           }
         }
       }
     }
 
-    // Normalized Tool Telemetry
+    // --- CROSS-AGENT TOOL EXECUTIONS ---
     SectionCard {
       title: "Cross-Agent Tool Executions"
       subtitle: "Combined operations across all active agents"
@@ -1298,7 +1544,7 @@ BarWidget {
       }
     }
 
-    // Combined 7-Day Activity
+    // --- COMBINED 7-DAY ACTIVITY ---
     SectionCard {
       id: weekCard
       title: "Last 7 Days Cross-Agent Activity"
@@ -1534,6 +1780,28 @@ BarWidget {
                 }
               }
             }
+          }
+        }
+      }
+    }
+
+    // Provider Recent Sessions
+    SectionCard {
+      title: agentName + " Sessions"
+      subtitle: "Recent conversations in terminal (click to resume)"
+      visible: Boolean(dataPayload && dataPayload.recentSessions && dataPayload.recentSessions.length > 0)
+
+      ColumnLayout {
+        Layout.fillWidth: true
+        spacing: 4
+
+        Repeater {
+          model: dataPayload ? (dataPayload.recentSessions || []).slice(0, 7) : []
+          delegate: SessionItem {
+            required property var modelData
+            sessionData: modelData
+            tagColor: agentColor
+            tagLabel: agentId === "antigravity" ? "AGY" : "CLAUDE"
           }
         }
       }

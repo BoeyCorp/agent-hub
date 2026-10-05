@@ -214,7 +214,6 @@ def scan_hub(
         agent_icon="assets/antigravity.svg"
     )
 
-    all_recent = c_recent_sessions + a_recent_sessions
     # Sort active first, then by lastModified / timestamp descending
     def session_sort_key(s: dict[str, Any]) -> tuple[int, float]:
         is_act = 1 if s.get("isActive") else 0
@@ -228,6 +227,15 @@ def scan_hub(
                 pass
         return (is_act, ts)
 
+    c_recent_sessions.sort(key=session_sort_key, reverse=True)
+    a_recent_sessions.sort(key=session_sort_key, reverse=True)
+
+    claude_data["activeSessions"] = c_active_sessions
+    claude_data["recentSessions"] = c_recent_sessions
+    antigravity_data["activeSessions"] = a_active_sessions
+    antigravity_data["recentSessions"] = a_recent_sessions
+
+    all_recent = c_recent_sessions + a_recent_sessions
     all_recent.sort(key=session_sort_key, reverse=True)
 
     # Combined totals
