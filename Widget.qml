@@ -345,7 +345,9 @@ BarWidget {
   }
 
   width: button.implicitWidth
+  height: button.implicitHeight
   implicitWidth: button.implicitWidth
+  implicitHeight: button.implicitHeight
 
   IpcHandler {
     target: "boeycorp.agent-hub"
