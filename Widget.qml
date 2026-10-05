@@ -953,8 +953,8 @@ BarWidget {
   component SessionItem: Rectangle {
     id: sItem
     property var sessionData: null
-    property color tagColor: root.accent
-    property string tagLabel: ""
+    property color tagColor: (sessionData && sessionData.agentColor) ? sessionData.agentColor : (sessionData && sessionData.agentId === "antigravity" ? "#38BDF8" : (sessionData && sessionData.agentId === "claude" ? "#D97757" : root.accent))
+    property string tagLabel: (sessionData && sessionData.agentId === "antigravity") ? "AGY" : ((sessionData && sessionData.agentId === "claude") ? "CLAUDE" : "")
 
     Layout.fillWidth: true
     implicitHeight: rowCol.implicitHeight + 8
@@ -1304,9 +1304,9 @@ BarWidget {
         spacing: 8
 
         Text {
-          visible: !((provider && provider.claudeData && provider.claudeData.quotaGroups && provider.claudeData.quotaGroups.length > 0) || (provider && provider.claudeData && provider.claudeData.recentSessions && provider.claudeData.recentSessions.length > 0))
+          visible: !((provider && provider.claudeData && provider.claudeData.quotaGroups && provider.claudeData.quotaGroups.length > 0))
           textFormat: Text.PlainText
-          text: "No active quotas or recent sessions found"
+          text: "No active quota limits configured"
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: 9
@@ -1329,46 +1329,6 @@ BarWidget {
 
           QuotaGroupView {
             quotaGroups: (provider && provider.claudeData) ? (provider.claudeData.quotaGroups || []) : []
-          }
-        }
-
-        // Claude Recent Sessions
-        ColumnLayout {
-          Layout.fillWidth: true
-          spacing: 4
-          visible: Boolean(provider && provider.claudeData && provider.claudeData.recentSessions && provider.claudeData.recentSessions.length > 0)
-
-          RowLayout {
-            Layout.fillWidth: true
-            spacing: 4
-
-            Text {
-              textFormat: Text.PlainText
-              text: "Recent Claude Sessions"
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: 8
-              font.bold: true
-              Layout.fillWidth: true
-            }
-
-            Text {
-              textFormat: Text.PlainText
-              text: "click to resume"
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: 8
-            }
-          }
-
-          Repeater {
-            model: (provider && provider.claudeData && provider.claudeData.recentSessions) ? provider.claudeData.recentSessions.slice(0, 3) : []
-            delegate: SessionItem {
-              required property var modelData
-              sessionData: modelData
-              tagColor: "#D97757"
-              tagLabel: "CLAUDE"
-            }
           }
         }
       }
@@ -1395,9 +1355,9 @@ BarWidget {
         spacing: 8
 
         Text {
-          visible: !((provider && provider.antigravityData && provider.antigravityData.quotaGroups && provider.antigravityData.quotaGroups.length > 0) || (provider && provider.antigravityData && provider.antigravityData.recentSessions && provider.antigravityData.recentSessions.length > 0))
+          visible: !((provider && provider.antigravityData && provider.antigravityData.quotaGroups && provider.antigravityData.quotaGroups.length > 0))
           textFormat: Text.PlainText
-          text: "No active quotas or recent sessions found"
+          text: "No active quota limits configured"
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: 9
@@ -1422,44 +1382,24 @@ BarWidget {
             quotaGroups: (provider && provider.antigravityData) ? (provider.antigravityData.quotaGroups || []) : []
           }
         }
+      }
+    }
 
-        // AGY Recent Sessions
-        ColumnLayout {
-          Layout.fillWidth: true
-          spacing: 4
-          visible: Boolean(provider && provider.antigravityData && provider.antigravityData.recentSessions && provider.antigravityData.recentSessions.length > 0)
+    // --- COMBINED ACTIVE & RECENT SESSIONS ---
+    SectionCard {
+      title: "Active & Recent Sessions"
+      subtitle: "Combined sessions across all agents · click or press 4-9 to resume"
+      visible: Boolean(provider && provider.recentSessions && provider.recentSessions.length > 0)
 
-          RowLayout {
-            Layout.fillWidth: true
-            spacing: 4
+      ColumnLayout {
+        Layout.fillWidth: true
+        spacing: 4
 
-            Text {
-              textFormat: Text.PlainText
-              text: "Recent Antigravity Sessions"
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: 8
-              font.bold: true
-              Layout.fillWidth: true
-            }
-
-            Text {
-              textFormat: Text.PlainText
-              text: "click to resume"
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: 8
-            }
-          }
-
-          Repeater {
-            model: (provider && provider.antigravityData && provider.antigravityData.recentSessions) ? provider.antigravityData.recentSessions.slice(0, 3) : []
-            delegate: SessionItem {
-              required property var modelData
-              sessionData: modelData
-              tagColor: "#38BDF8"
-              tagLabel: "AGY"
-            }
+        Repeater {
+          model: provider ? (provider.recentSessions || []).slice(0, 7) : []
+          delegate: SessionItem {
+            required property var modelData
+            sessionData: modelData
           }
         }
       }
