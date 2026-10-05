@@ -561,8 +561,10 @@ BarWidget {
 
         // Tab Navigation Bar (Overview | Claude Code | Antigravity)
         Rectangle {
+          id: tabNav
           visible: !root.settingsMode
           Layout.fillWidth: true
+          Layout.preferredHeight: 28
           implicitHeight: 28
           color: root.track
           radius: 4
@@ -620,14 +622,19 @@ BarWidget {
         Flickable {
           id: flick
           Layout.fillWidth: true
-          Layout.preferredHeight: Math.min(520, contentColumn.implicitHeight)
+          Layout.fillHeight: true
           contentWidth: width
           contentHeight: contentColumn.implicitHeight
           clip: true
+          boundsBehavior: Flickable.StopAtBounds
+          flickableDirection: Flickable.VerticalFlick
+          ScrollBar.vertical: ScrollBar {
+            policy: flick.contentHeight > (flick.height + 2) ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+          }
 
           ColumnLayout {
             id: contentColumn
-            width: parent.width
+            width: flick.width
             spacing: 8
 
             // --- SETTINGS VIEW ---
@@ -683,10 +690,19 @@ BarWidget {
     Layout.fillWidth: true
     color: root.card
     borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05), 1)
+    padding: 8
+    radius: Style.cornerRadius
+    implicitHeight: headerRow.implicitHeight + contentTopInset + contentBottomInset
 
     RowLayout {
-      anchors.fill: parent
-      anchors.margins: 8
+      id: headerRow
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      anchors.topMargin: hdr.contentTopInset
+      anchors.rightMargin: hdr.contentRightInset
+      anchors.bottomMargin: hdr.contentBottomInset
+      anchors.leftMargin: hdr.contentLeftInset
       spacing: 6
 
       ColumnLayout {
@@ -803,51 +819,55 @@ BarWidget {
     Layout.fillWidth: true
     color: root.card
     borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05), 1)
+    padding: 10
+    radius: Style.cornerRadius
+    implicitHeight: body.implicitHeight + contentTopInset + contentBottomInset
+    clip: true
 
     ColumnLayout {
-      anchors.fill: parent
-      anchors.margins: 8
+      id: body
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      anchors.topMargin: section.contentTopInset
+      anchors.rightMargin: section.contentRightInset
+      anchors.bottomMargin: section.contentBottomInset
+      anchors.leftMargin: section.contentLeftInset
       spacing: 6
 
       RowLayout {
+        visible: section.title !== "" || section.headerAccessory !== null
         Layout.fillWidth: true
-        spacing: 4
+        spacing: 6
 
-        ColumnLayout {
+        Text {
+          visible: section.title !== ""
           Layout.fillWidth: true
-          spacing: 1
-
-          Text {
-            textFormat: Text.PlainText
-            text: section.title
-            color: section.titleColor
-            font.family: root.fontFamily
-            font.pixelSize: 11
-            font.bold: true
-          }
-
-          Text {
-            visible: section.subtitle.length > 0
-            textFormat: Text.PlainText
-            text: section.subtitle
-            color: root.dim
-            font.family: root.fontFamily
-            font.pixelSize: 8
-            elide: Text.ElideRight
-            Layout.fillWidth: true
-          }
+          textFormat: Text.PlainText
+          text: section.title
+          color: section.titleColor
+          font.family: root.fontFamily
+          font.pixelSize: 11
+          font.bold: true
         }
 
         Loader {
           sourceComponent: section.headerAccessory
-          Layout.alignment: Qt.AlignVCenter
+          visible: !!section.headerAccessory
+          Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
         }
       }
 
-      Item {
-        id: body
+      Text {
+        textFormat: Text.PlainText
+        visible: section.subtitle !== ""
         Layout.fillWidth: true
-        implicitHeight: childrenRect.height
+        text: section.subtitle
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: 9
+        wrapMode: Text.WordWrap
+        elide: Text.ElideRight
       }
     }
   }
@@ -858,8 +878,9 @@ BarWidget {
     property color valColor: root.foreground
 
     Layout.fillWidth: true
-    implicitHeight: 44
-    radius: 3
+    Layout.preferredWidth: 60
+    implicitHeight: 46
+    radius: 4
     color: root.track
 
     ColumnLayout {
@@ -890,6 +911,7 @@ BarWidget {
   // --- OVERVIEW TAB CONTENT ---
   component OverviewContent: ColumnLayout {
     property var provider: null
+    Layout.fillWidth: true
     spacing: 8
 
     // Combined Today & Totals Card
@@ -898,11 +920,11 @@ BarWidget {
       subtitle: "Combined metrics across Claude Code & Antigravity"
 
       ColumnLayout {
-        width: parent.width
+        Layout.fillWidth: true
         spacing: 6
 
         RowLayout {
-          width: parent.width
+          Layout.fillWidth: true
           spacing: 6
 
           StatBlock {
@@ -926,7 +948,7 @@ BarWidget {
 
         // Sub-breakdown row
         RowLayout {
-          width: parent.width
+          Layout.fillWidth: true
           spacing: 8
 
           Text {
@@ -969,7 +991,7 @@ BarWidget {
       visible: Boolean(provider && provider.quotaGroups && provider.quotaGroups.length > 0)
 
       ColumnLayout {
-        width: parent.width
+        Layout.fillWidth: true
         spacing: 8
 
         Repeater {
@@ -1084,7 +1106,7 @@ BarWidget {
       visible: Boolean(provider && provider.recentSessions && provider.recentSessions.length > 0)
 
       ColumnLayout {
-        width: parent.width
+        Layout.fillWidth: true
         spacing: 4
 
         Repeater {
@@ -1232,7 +1254,7 @@ BarWidget {
       visible: Boolean(provider && provider.toolUsage && Object.keys(provider.toolUsage).length > 0)
 
       GridLayout {
-        width: parent.width
+        Layout.fillWidth: true
         columns: 2
         columnSpacing: 10
         rowSpacing: 4
@@ -1293,7 +1315,7 @@ BarWidget {
       }
 
       ColumnLayout {
-        width: parent.width
+        Layout.fillWidth: true
         spacing: 4
 
         Repeater {
@@ -1358,6 +1380,7 @@ BarWidget {
     property string agentName: ""
     property color agentColor: root.accent
     property var dataPayload: ({})
+    Layout.fillWidth: true
     spacing: 8
 
     SectionCard {
@@ -1365,7 +1388,7 @@ BarWidget {
       subtitle: dataPayload.currentModel || ""
 
       RowLayout {
-        width: parent.width
+        Layout.fillWidth: true
         spacing: 6
 
         StatBlock {
@@ -1391,7 +1414,7 @@ BarWidget {
       visible: Boolean(dataPayload && dataPayload.modelList && dataPayload.modelList.length > 0)
 
       ColumnLayout {
-        width: parent.width
+        Layout.fillWidth: true
         spacing: 4
 
         Repeater {
@@ -1453,7 +1476,7 @@ BarWidget {
       visible: Boolean(dataPayload && dataPayload.quotaGroups && dataPayload.quotaGroups.length > 0)
 
       ColumnLayout {
-        width: parent.width
+        Layout.fillWidth: true
         spacing: 6
 
         Repeater {
@@ -1519,6 +1542,7 @@ BarWidget {
 
   // --- SETTINGS VIEW CONTENT ---
   component SettingsContent: ColumnLayout {
+    Layout.fillWidth: true
     spacing: 8
 
     // Agent Enablement
@@ -1527,7 +1551,7 @@ BarWidget {
       subtitle: "Enable or disable agent integrations"
 
       ColumnLayout {
-        width: parent.width
+        Layout.fillWidth: true
         spacing: 6
 
         RowLayout {
@@ -1570,7 +1594,7 @@ BarWidget {
       subtitle: "Instant zero-latency bar refresh on agent session events"
 
       ColumnLayout {
-        width: parent.width
+        Layout.fillWidth: true
         spacing: 6
 
         Text {
@@ -1620,7 +1644,7 @@ BarWidget {
       subtitle: "Metric shown in the bar widget badge pill"
 
       ColumnLayout {
-        width: parent.width
+        Layout.fillWidth: true
         spacing: 4
 
         Repeater {
@@ -1660,7 +1684,7 @@ BarWidget {
       subtitle: "Override command (e.g. ghostty, kitty, foot, alacritty)"
 
       ColumnLayout {
-        width: parent.width
+        Layout.fillWidth: true
         spacing: 4
 
         TextField {
