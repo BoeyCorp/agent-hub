@@ -1572,7 +1572,11 @@ BarWidget {
 
     SectionCard {
       title: agentName + " Overview"
-      subtitle: dataPayload.currentModel || ""
+      titleColor: agentColor
+      icon: agentId === "antigravity" ? "assets/antigravity.svg" : "assets/claude.svg"
+      badgeText: dataPayload.currentModel || ""
+      badgeColor: agentColor
+      subtitle: agentId === "antigravity" ? "Google Antigravity Agentic Assistant • Gemini & 3rd-Party Models" : "Anthropic Claude Code CLI"
 
       RowLayout {
         Layout.fillWidth: true
@@ -1610,10 +1614,31 @@ BarWidget {
             required property var modelData
             Layout.fillWidth: true
             spacing: 2
+            readonly property bool isClaudeGpt: (modelData.name || "").indexOf("Claude") !== -1 || (modelData.name || "").indexOf("GPT") !== -1
 
             RowLayout {
               Layout.fillWidth: true
               spacing: 4
+
+              // Agent / Model Group Badge (Antigravity tab)
+              Rectangle {
+                visible: agentId === "antigravity"
+                radius: 2
+                color: isClaudeGpt ? "#D97757" : "#38BDF8"
+                Layout.preferredHeight: 12
+                Layout.preferredWidth: mTypeTag.implicitWidth + 6
+
+                Text {
+                  id: mTypeTag
+                  anchors.centerIn: parent
+                  textFormat: Text.PlainText
+                  text: isClaudeGpt ? "CLAUDE / GPT" : "GEMINI"
+                  color: "#FFFFFF"
+                  font.family: root.fontFamily
+                  font.pixelSize: 7
+                  font.bold: true
+                }
+              }
 
               Text {
                 textFormat: Text.PlainText
@@ -1648,7 +1673,7 @@ BarWidget {
                 anchors.bottom: parent.bottom
                 width: parent.width * Math.min(1.0, Math.max(0.0, Number(modelData.shareFraction || 0)))
                 radius: 2
-                color: modelData.color || agentColor
+                color: isClaudeGpt ? "#D97757" : (agentId === "antigravity" ? "#38BDF8" : (modelData.color || agentColor))
               }
             }
           }
@@ -1656,98 +1681,14 @@ BarWidget {
       }
     }
 
-    // Provider Quota Groups
+    // Provider Quota Groups (matching Overview page QuotaGroupView)
     SectionCard {
-      title: "Quota Limits"
-      subtitle: dataPayload.tierLabel || ""
+      title: "Quota Limits & Reset Forecasting"
+      subtitle: dataPayload.tierLabel || "Hourly consumption burn rates and reset projections"
       visible: Boolean(dataPayload && dataPayload.quotaGroups && dataPayload.quotaGroups.length > 0)
 
-      ColumnLayout {
-        Layout.fillWidth: true
-        spacing: 6
-
-        Repeater {
-          model: dataPayload.quotaGroups || []
-          delegate: ColumnLayout {
-            required property var modelData
-            Layout.fillWidth: true
-            spacing: 4
-
-            Repeater {
-              model: modelData.buckets || []
-              delegate: ColumnLayout {
-                required property var modelData
-                Layout.fillWidth: true
-                spacing: 2
-
-                RowLayout {
-                  Layout.fillWidth: true
-                  spacing: 4
-
-                  Text {
-                    textFormat: Text.PlainText
-                    text: modelData.label || modelData.name || "Limit"
-                    color: root.foreground
-                    font.family: root.fontFamily
-                    font.pixelSize: 10
-                    Layout.fillWidth: true
-                  }
-
-                  Text {
-                    textFormat: Text.PlainText
-                    text: modelData.remainingPercent + "%"
-                    color: modelData.remainingPercent <= 15 ? root.urgent : root.foreground
-                    font.family: root.fontFamily
-                    font.pixelSize: 9
-                    font.bold: true
-                  }
-                }
-
-                Rectangle {
-                  Layout.fillWidth: true
-                  Layout.preferredHeight: 5
-                  radius: 2
-                  color: root.track
-                  clip: true
-
-                  Rectangle {
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    width: parent.width * Math.max(0.0, Math.min(1.0, Number(modelData.remainingFraction || 0)))
-                    radius: 2
-                    color: modelData.remainingPercent <= 15 ? root.urgent : agentColor
-                  }
-                }
-
-                // Sub-info: Reset and forecast
-                RowLayout {
-                  Layout.fillWidth: true
-                  spacing: 4
-
-                  Text {
-                    textFormat: Text.PlainText
-                    text: modelData.forecastText || ""
-                    color: modelData.forecastStatus === "critical" ? root.urgent : (modelData.forecastStatus === "warning" ? "#F59E0B" : root.dim)
-                    font.family: root.fontFamily
-                    font.pixelSize: 8
-                    elide: Text.ElideRight
-                    Layout.fillWidth: true
-                  }
-
-                  Text {
-                    visible: Boolean((modelData.resetTime || modelData.resetsAt || modelData.reset_time) && String(modelData.resetTime || modelData.resetsAt || modelData.reset_time).length > 0)
-                    textFormat: Text.PlainText
-                    text: root.formatResetText(modelData.resetTime || modelData.resetsAt || modelData.reset_time)
-                    color: root.dim
-                    font.family: root.fontFamily
-                    font.pixelSize: 8
-                  }
-                }
-              }
-            }
-          }
-        }
+      QuotaGroupView {
+        quotaGroups: dataPayload.quotaGroups || []
       }
     }
 
