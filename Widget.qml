@@ -1303,27 +1303,13 @@ BarWidget {
         Layout.fillWidth: true
         spacing: 8
 
-        RowLayout {
-          Layout.fillWidth: true
-          spacing: 6
-
-          StatBlock {
-            value: provider ? usageMain.formatNumber(provider.claudeData.todayPrompts || 0) : "0"
-            label: "prompts"
-          }
-          StatBlock {
-            value: provider ? usageMain.formatNumber(provider.claudeData.todaySteps || 0) : "0"
-            label: "steps"
-          }
-          StatBlock {
-            value: provider ? usageMain.formatNumber(provider.claudeData.todayTotalTokens || 0) : "0"
-            label: "tokens"
-            valColor: "#D97757"
-          }
-          StatBlock {
-            value: provider ? String(provider.claudeData.todaySessions || 0) : "0"
-            label: "sessions"
-          }
+        Text {
+          visible: !((provider && provider.claudeData && provider.claudeData.quotaGroups && provider.claudeData.quotaGroups.length > 0) || (provider && provider.claudeData && provider.claudeData.recentSessions && provider.claudeData.recentSessions.length > 0))
+          textFormat: Text.PlainText
+          text: "No active quotas or recent sessions found"
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: 9
         }
 
         // Claude Quotas
@@ -1408,27 +1394,13 @@ BarWidget {
         Layout.fillWidth: true
         spacing: 8
 
-        RowLayout {
-          Layout.fillWidth: true
-          spacing: 6
-
-          StatBlock {
-            value: provider ? usageMain.formatNumber(provider.antigravityData.todayPrompts || 0) : "0"
-            label: "prompts"
-          }
-          StatBlock {
-            value: provider ? usageMain.formatNumber(provider.antigravityData.todaySteps || 0) : "0"
-            label: "steps"
-          }
-          StatBlock {
-            value: provider ? usageMain.formatNumber(provider.antigravityData.todayTotalTokens || 0) : "0"
-            label: "tokens"
-            valColor: "#38BDF8"
-          }
-          StatBlock {
-            value: provider ? String(provider.antigravityData.todaySessions || 0) : "0"
-            label: "sessions"
-          }
+        Text {
+          visible: !((provider && provider.antigravityData && provider.antigravityData.quotaGroups && provider.antigravityData.quotaGroups.length > 0) || (provider && provider.antigravityData && provider.antigravityData.recentSessions && provider.antigravityData.recentSessions.length > 0))
+          textFormat: Text.PlainText
+          text: "No active quotas or recent sessions found"
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: 9
         }
 
         // AGY Quotas
