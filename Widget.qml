@@ -267,6 +267,11 @@ BarWidget {
     onTriggered: root.settingsStatusText = ""
   }
 
+  Main {
+    id: usageMain
+    settings: root.settings
+  }
+
   Timer {
     id: refreshFlashTimer
     interval: 400
@@ -340,77 +345,7 @@ BarWidget {
   }
 
   width: button.implicitWidth
-
-  BarButton {
-    id: button
-    contentItem: RowLayout {
-      spacing: Style.space(4)
-
-      Item {
-        width: 14
-        height: 14
-        Layout.alignment: Qt.AlignVCenter
-
-        Image {
-          id: barIcon
-          anchors.fill: parent
-          source: root.iconSource
-          fillMode: Image.PreserveAspectFit
-          mipmap: true
-          visible: false
-        }
-
-        MultiEffect {
-          anchors.fill: barIcon
-          source: barIcon
-          colorization: 1.0
-          colorizationColor: root.foreground
-        }
-
-        // Pulse dot
-        Rectangle {
-          id: pulseDot
-          width: 5
-          height: 5
-          radius: 2.5
-          anchors.right: parent.right
-          anchors.bottom: parent.bottom
-          anchors.margins: -1
-          color: root.isWorking ? "#10B981" : (root.isWaiting ? "#38BDF8" : "transparent")
-          visible: root.hasActiveSession
-
-          SequentialAnimation on opacity {
-            running: root.isWorking
-            loops: Animation.Infinite
-            NumberAnimation { from: 1.0; to: 0.3; duration: 600; easing.type: Easing.InOutQuad }
-            NumberAnimation { from: 0.3; to: 1.0; duration: 600; easing.type: Easing.InOutQuad }
-          }
-        }
-      }
-
-      Text {
-        id: badgeText
-        visible: text.length > 0
-        text: root.getBadgeText()
-        color: {
-          var mode = root.settings ? root.settings.badgeMode : "active"
-          if (mode === "quota") {
-            var val = parseInt(text)
-            if (!isNaN(val) && val <= 15) return root.urgent
-            if (!isNaN(val) && val <= 30) return "#F59E0B"
-          }
-          return root.foreground
-        }
-        font.family: root.fontFamily
-        font.pixelSize: 10
-        font.bold: true
-        Layout.alignment: Qt.AlignVCenter
-      }
-    }
-
-    onPressed: function(mouse) { root.triggerPress(mouse.button) }
-    Tooltip { text: root.tooltipText() }
-  }
+  implicitWidth: button.implicitWidth
 
   IpcHandler {
     target: "boeycorp.agent-hub"
@@ -423,28 +358,157 @@ BarWidget {
     }
     function refresh(): string { root.triggerRefresh(true); return "ok" }
     function settings(): string { root.openSettings(); return "ok" }
+    function openSettings(): string { root.openSettings(); return "ok" }
+    function setBadgeMode(mode: string): string { root.updateSetting("badgeMode", mode); return "ok" }
   }
 
-  PopupWindow {
-    id: popup
-    visible: root.popupOpen
-    anchor.window: bar
-    anchor.rect.x: button.x
-    anchor.rect.y: button.y
-    anchor.rect.width: button.width
-    anchor.rect.height: button.height
-    anchor.edges: Edges.Bottom
-    anchor.gravity: Edges.Bottom
+  component UsageChip: Item {
+    id: chip
 
-    color: "transparent"
+    readonly property bool tooltipHovered: mouseArea.containsMouse
+    readonly property string badgeTextValue: root.getBadgeText()
+    readonly property bool hasBadge: badgeTextValue.length > 0
 
-    Item {
+    width: hasBadge ? (14 + badgeText.implicitWidth + 10) : root.barSize
+    height: root.barSize
+
+    RowLayout {
+      anchors.centerIn: parent
+      spacing: 4
+
+      Item {
+        id: iconBox
+        width: 14
+        height: 14
+
+        Image {
+          id: barIconImage
+          source: root.iconSource
+          width: 13
+          height: 13
+          sourceSize.width: Math.round(13 * (Screen.devicePixelRatio || 1))
+          sourceSize.height: Math.round(13 * (Screen.devicePixelRatio || 1))
+          fillMode: Image.PreserveAspectFit
+          anchors.centerIn: parent
+          visible: false
+          layer.enabled: true
+        }
+
+        MultiEffect {
+          anchors.fill: barIconImage
+          source: barIconImage
+          colorization: 1.0
+          colorizationColor: root.foreground
+        }
+
+        // Active pulse glow
+        Rectangle {
+          width: 4
+          height: 4
+          radius: 2
+          anchors.right: parent.right
+          anchors.bottom: parent.bottom
+          anchors.margins: -1
+          color: root.isWorking ? "#10B981" : (root.isWaiting ? "#38BDF8" : "transparent")
+          visible: root.hasActiveSession
+
+          SequentialAnimation on opacity {
+            running: root.isWorking
+            loops: Animation.Infinite
+            NumberAnimation { from: 0.3; to: 1.0; duration: 600; easing.type: Easing.InOutQuad }
+            NumberAnimation { from: 1.0; to: 0.3; duration: 600; easing.type: Easing.InOutQuad }
+          }
+        }
+      }
+
+      Text {
+        id: badgeText
+        visible: chip.hasBadge
+        textFormat: Text.PlainText
+        text: chip.badgeTextValue
+        color: {
+          var mode = root.settings ? root.settings.badgeMode : "active"
+          if (mode === "quota") {
+            var val = parseInt(chip.badgeTextValue)
+            if (!isNaN(val) && val <= 15) return root.urgent
+            if (!isNaN(val) && val <= 30) return "#F59E0B"
+          }
+          return root.isWorking ? "#10B981" : (root.isWaiting ? "#38BDF8" : root.dim)
+        }
+        font.family: root.fontFamily
+        font.pixelSize: 9
+        font.bold: true
+        Layout.alignment: Qt.AlignVCenter
+      }
+    }
+
+    property var registeredBar: null
+
+    function triggerPress(button) { root.triggerPress(button) }
+
+    function syncClickRegistration() {
+      if (registeredBar && registeredBar.unregisterClickTarget) registeredBar.unregisterClickTarget(chip)
+      registeredBar = root.bar
+      if (registeredBar && registeredBar.registerClickTarget) registeredBar.registerClickTarget(chip)
+    }
+
+    Component.onCompleted: syncClickRegistration()
+    Component.onDestruction: if (registeredBar && registeredBar.unregisterClickTarget) registeredBar.unregisterClickTarget(chip)
+
+    Connections {
+      target: root
+      function onBarChanged() { chip.syncClickRegistration() }
+    }
+
+    MouseArea {
+      id: mouseArea
+      anchors.fill: parent
+      acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onEntered: if (root.bar) root.bar.showTooltip(chip, root.tooltipText())
+      onExited: if (root.bar) root.bar.hideTooltip(chip)
+      onClicked: function(mouse) { root.triggerPress(mouse.button) }
+    }
+  }
+
+  Item {
+    id: button
+    anchors.fill: parent
+    implicitWidth: usageChip.width
+    implicitHeight: root.barSize
+
+    UsageChip {
+      id: usageChip
+      anchors.centerIn: parent
+    }
+  }
+
+  KeyboardPanel {
+    id: panel
+    anchorItem: button
+    owner: root
+    bar: root.bar
+    open: root.popupOpen
+    focusTarget: keyCatcher
+    contentWidth: panel.fittedContentWidth(Style.space(420))
+    contentHeight: {
+      var headerH = (root.settingsMode ? settingsHeader.implicitHeight : statsHeader.implicitHeight) + 16
+      var navH = root.settingsMode ? 0 : 36
+      var needed = headerH + navH + contentColumn.implicitHeight + Style.space(24)
+      return panel.fittedContentHeight(needed, Style.space(660))
+    }
+
+    PanelKeyCatcher {
       id: keyCatcher
-      focus: true
-      Keys.onPressed: function(event) {
-        var t = event.text
-        if (event.key === Qt.Key_Escape) root.close()
-        else if (t === "r" || t === "R") root.triggerRefresh(true)
+      anchors.fill: parent
+
+      onMoveRequested: function(dx, dy) {
+        if (dy !== 0) flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, flick.contentY + dy * 56))
+      }
+      onCloseRequested: root.close()
+      onTextKey: function(t) {
+        if (t === "r" || t === "R") root.triggerRefresh(true)
         else if (t === "s" || t === "S") root.settingsMode ? root.saveSettings() : root.openSettings()
         else if (t === "n" || t === "N") { if (!root.settingsMode) root.newSession() }
         else if (t === "q" || t === "Q") root.close()
@@ -673,7 +737,6 @@ BarWidget {
             cursorShape: Qt.PointingHandCursor
             onClicked: hdr.newSessionClicked()
           }
-          Tooltip { text: "New Agent Session (n)" }
         }
 
         Rectangle {
@@ -698,7 +761,6 @@ BarWidget {
             cursorShape: Qt.PointingHandCursor
             onClicked: hdr.refreshClicked()
           }
-          Tooltip { text: "Refresh (r)" }
         }
 
         Rectangle {
@@ -723,7 +785,6 @@ BarWidget {
             cursorShape: Qt.PointingHandCursor
             onClicked: hdr.settingsClicked()
           }
-          Tooltip { text: root.settingsMode ? "Close Settings (s)" : "Settings (s)" }
         }
       }
     }
@@ -903,7 +964,7 @@ BarWidget {
     SectionCard {
       title: "Quota Limits & Reset Forecasting"
       subtitle: "Hourly consumption burn rates and reset projections"
-      visible: provider && provider.quotaGroups && provider.quotaGroups.length > 0
+      visible: Boolean(provider && provider.quotaGroups && provider.quotaGroups.length > 0)
 
       ColumnLayout {
         width: parent.width
@@ -946,7 +1007,7 @@ BarWidget {
                   }
 
                   Text {
-                    visible: modelData.burnRateText && modelData.burnRateText.length > 0
+                    visible: Boolean(modelData.burnRateText && modelData.burnRateText.length > 0)
                     textFormat: Text.PlainText
                     text: "🔥 " + modelData.burnRateText
                     color: modelData.forecastStatus === "critical" ? root.urgent : (modelData.forecastStatus === "warning" ? "#F59E0B" : root.dim)
@@ -999,7 +1060,7 @@ BarWidget {
                   }
 
                   Text {
-                    visible: modelData.resetTime && modelData.resetTime.length > 0
+                    visible: Boolean(modelData.resetTime && modelData.resetTime.length > 0)
                     textFormat: Text.PlainText
                     text: "Resets " + root.formatExactResetTime(modelData.resetTime)
                     color: root.dim
@@ -1018,7 +1079,7 @@ BarWidget {
     SectionCard {
       title: "Active & Recent Sessions"
       subtitle: "Click or press 4-9 to resume in terminal"
-      visible: provider && provider.recentSessions && provider.recentSessions.length > 0
+      visible: Boolean(provider && provider.recentSessions && provider.recentSessions.length > 0)
 
       ColumnLayout {
         width: parent.width
@@ -1166,7 +1227,7 @@ BarWidget {
     SectionCard {
       title: "Cross-Agent Tool Executions"
       subtitle: "Combined operations across all active agents"
-      visible: provider && provider.toolUsage && Object.keys(provider.toolUsage).length > 0
+      visible: Boolean(provider && provider.toolUsage && Object.keys(provider.toolUsage).length > 0)
 
       GridLayout {
         width: parent.width
@@ -1217,7 +1278,7 @@ BarWidget {
     SectionCard {
       id: weekCard
       title: "Last 7 Days Cross-Agent Activity"
-      visible: provider && provider.recentDays && provider.recentDays.length > 0
+      visible: Boolean(provider && provider.recentDays && provider.recentDays.length > 0)
 
       readonly property real maxCount: {
         var days = provider ? (provider.recentDays || []) : []
@@ -1325,7 +1386,7 @@ BarWidget {
     SectionCard {
       title: "Model Usage Breakdown"
       subtitle: "Prompt and step volume by model"
-      visible: dataPayload.modelList && dataPayload.modelList.length > 0
+      visible: Boolean(dataPayload && dataPayload.modelList && dataPayload.modelList.length > 0)
 
       ColumnLayout {
         width: parent.width
@@ -1387,7 +1448,7 @@ BarWidget {
     SectionCard {
       title: "Quota Limits"
       subtitle: dataPayload.tierLabel || ""
-      visible: dataPayload.quotaGroups && dataPayload.quotaGroups.length > 0
+      visible: Boolean(dataPayload && dataPayload.quotaGroups && dataPayload.quotaGroups.length > 0)
 
       ColumnLayout {
         width: parent.width
@@ -1530,8 +1591,8 @@ BarWidget {
 
           Button {
             text: (root.provider && root.provider.hooksInstalled) ? "Remove All Hooks" : "Install All Hooks"
-            font.family: root.fontFamily
-            font.pixelSize: 10
+            fontFamily: root.fontFamily
+            fontSize: 10
             onClicked: {
               if (root.provider && root.provider.hooksInstalled) {
                 root.provider.removeHooks("all")
@@ -1543,8 +1604,8 @@ BarWidget {
 
           Button {
             text: "Check Status"
-            font.family: root.fontFamily
-            font.pixelSize: 10
+            fontFamily: root.fontFamily
+            fontSize: 10
             onClicked: if (root.provider) root.provider.checkHooks()
           }
         }
