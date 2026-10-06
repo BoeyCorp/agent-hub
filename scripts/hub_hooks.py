@@ -43,12 +43,18 @@ def default_antigravity_hooks_path() -> Path:
 def load_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else {}
-    except Exception:
+    if not path.is_file():
         return {}
+    text = path.read_text(encoding="utf-8")
+    if not text.strip():
+        return {}
+    try:
+        data = json.loads(text)
+    except Exception as e:
+        raise ValueError(f"Corrupted or invalid JSON configuration in {path}: {e}") from e
+    if not isinstance(data, dict):
+        raise ValueError(f"Invalid JSON configuration in {path}: root must be an object/dict, got {type(data).__name__}")
+    return data
 
 
 def save_json(path: Path, data: dict[str, Any], bak_suffix: str = ".agent-hub.bak") -> None:
@@ -166,28 +172,72 @@ def install_antigravity_hooks(path: Path) -> bool:
     cmd = f"{HOOK_COMMAND} >/dev/null 2>&1 || true; echo '{{}}'"
     handler = {"type": "command", "command": cmd, "timeout": HOOK_TIMEOUT}
 
-    target = {
-        "enabled": True,
-        "PreInvocation": [handler],
-        "PostInvocation": [handler],
-        "Stop": [handler]
-    }
+    entry = config.setdefault(ANTIGRAVITY_HOOK_KEY, {})
+    if not isinstance(entry, dict):
+        entry = {}
+        config[ANTIGRAVITY_HOOK_KEY] = entry
 
-    if config.get(ANTIGRAVITY_HOOK_KEY) == target:
-        return False
+    changed = False
+    if entry.get("enabled") is not True:
+        entry["enabled"] = True
+        changed = True
 
-    config[ANTIGRAVITY_HOOK_KEY] = target
-    save_json(path, config)
-    return True
+    for event in ("PreInvocation", "PostInvocation", "Stop"):
+        handlers = entry.get(event)
+        if not isinstance(handlers, list):
+            handlers = []
+            entry[event] = handlers
+
+        already = any(
+            isinstance(h, dict) and HOOK_COMMAND in str(h.get("command", ""))
+            for h in handlers
+        )
+        if not already:
+            handlers.append(handler)
+            changed = True
+
+    if changed:
+        save_json(path, config)
+    return changed
 
 
 def remove_antigravity_hooks(path: Path) -> bool:
     config = load_json(path)
-    if ANTIGRAVITY_HOOK_KEY in config:
+    if ANTIGRAVITY_HOOK_KEY not in config:
+        return False
+
+    entry = config[ANTIGRAVITY_HOOK_KEY]
+    if not isinstance(entry, dict):
         del config[ANTIGRAVITY_HOOK_KEY]
         save_json(path, config)
         return True
-    return False
+
+    changed = False
+    for event in ("PreInvocation", "PostInvocation", "Stop"):
+        handlers = entry.get(event)
+        if not isinstance(handlers, list):
+            continue
+
+        kept = [
+            h for h in handlers
+            if not (isinstance(h, dict) and HOOK_COMMAND in str(h.get("command", "")))
+        ]
+        if len(kept) != len(handlers):
+            changed = True
+            if kept:
+                entry[event] = kept
+            else:
+                del entry[event]
+
+    # If no event lists or other custom settings remain in entry, remove the entry key cleanly
+    remaining_custom_keys = [k for k in entry if k != "enabled"]
+    if not remaining_custom_keys:
+        del config[ANTIGRAVITY_HOOK_KEY]
+        changed = True
+
+    if changed:
+        save_json(path, config)
+    return changed
 
 
 # --- Combined API ---
@@ -195,14 +245,34 @@ def remove_antigravity_hooks(path: Path) -> bool:
 def get_status(claude_path: Path | None = None, agy_path: Path | None = None) -> dict[str, Any]:
     c_p = claude_path or default_claude_settings_path()
     a_p = agy_path or default_antigravity_hooks_path()
-    c_inst = claude_hooks_installed(load_json(c_p))
-    a_inst = antigravity_hooks_installed(load_json(a_p))
-    return {
+    c_err = None
+    a_err = None
+    try:
+        c_inst = claude_hooks_installed(load_json(c_p))
+    except Exception as e:
+        c_inst = False
+        c_err = str(e)
+
+    try:
+        a_inst = antigravity_hooks_installed(load_json(a_p))
+    except Exception as e:
+        a_inst = False
+        a_err = str(e)
+
+    res: dict[str, Any] = {
         "claudeInstalled": c_inst,
         "antigravityInstalled": a_inst,
         "installed": c_inst or a_inst,
         "allInstalled": c_inst and a_inst
     }
+    if c_err or a_err:
+        errors: dict[str, str] = {}
+        if c_err:
+            errors["claude"] = c_err
+        if a_err:
+            errors["antigravity"] = a_err
+        res["errors"] = errors
+    return res
 
 
 def install_all(claude_path: Path | None = None, agy_path: Path | None = None) -> dict[str, Any]:
@@ -231,7 +301,7 @@ def remove_all(claude_path: Path | None = None, agy_path: Path | None = None) ->
     }
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser(description="Manage Live Refresh Hooks for Agent Hub")
     parser.add_argument("action", choices=["install", "remove", "status"])
     parser.add_argument("--agent", choices=["all", "claude", "antigravity"], default="all")
@@ -242,30 +312,36 @@ def main() -> None:
     c_path = Path(args.claude_path).expanduser() if args.claude_path else default_claude_settings_path()
     a_path = Path(args.agy_path).expanduser() if args.agy_path else default_antigravity_hooks_path()
 
-    if args.action == "status":
-        print(json.dumps(get_status(c_path, a_path), indent=2))
-        return
+    try:
+        if args.action == "status":
+            print(json.dumps(get_status(c_path, a_path), indent=2))
+            return 0
 
-    if args.action == "install":
-        if args.agent == "claude":
-            res = {"claudeInstalled": True, "changed": install_claude_hooks(c_path)}
-        elif args.agent == "antigravity":
-            res = {"antigravityInstalled": True, "changed": install_antigravity_hooks(a_path)}
-        else:
-            res = install_all(c_path, a_path)
-        print(json.dumps(res, indent=2))
-        return
+        if args.action == "install":
+            if args.agent == "claude":
+                res = {"claudeInstalled": True, "changed": install_claude_hooks(c_path)}
+            elif args.agent == "antigravity":
+                res = {"antigravityInstalled": True, "changed": install_antigravity_hooks(a_path)}
+            else:
+                res = install_all(c_path, a_path)
+            print(json.dumps(res, indent=2))
+            return 0
 
-    if args.action == "remove":
-        if args.agent == "claude":
-            res = {"claudeInstalled": False, "changed": remove_claude_hooks(c_path)}
-        elif args.agent == "antigravity":
-            res = {"antigravityInstalled": False, "changed": remove_antigravity_hooks(a_path)}
-        else:
-            res = remove_all(c_path, a_path)
-        print(json.dumps(res, indent=2))
-        return
+        if args.action == "remove":
+            if args.agent == "claude":
+                res = {"claudeInstalled": False, "changed": remove_claude_hooks(c_path)}
+            elif args.agent == "antigravity":
+                res = {"antigravityInstalled": False, "changed": remove_antigravity_hooks(a_path)}
+            else:
+                res = remove_all(c_path, a_path)
+            print(json.dumps(res, indent=2))
+            return 0
+    except ValueError as e:
+        print(json.dumps({"success": False, "error": str(e)}), file=sys.stderr)
+        return 1
+
+    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main() or 0)
+    sys.exit(main())

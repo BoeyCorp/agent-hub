@@ -207,8 +207,78 @@ def pid_alive(pid: Any) -> bool:
         return False
 
 
+def get_proc_starttime(pid: int) -> str | None:
+    """Read field 22 (starttime in clock ticks) from /proc/<pid>/stat on Linux."""
+    try:
+        stat_file = Path(f"/proc/{pid}/stat")
+        if not stat_file.exists():
+            return None
+        text = stat_file.read_text(encoding="utf-8", errors="replace")
+        rparen = text.rfind(")")
+        if rparen == -1:
+            return None
+        fields = text[rparen + 2:].split()
+        if len(fields) > 19:
+            return fields[19]
+    except Exception:
+        pass
+    return None
+
+
+def is_claude_process(pid: Any, expected_proc_start: Any = None) -> bool:
+    """Verify that a process is active, belongs to Claude Code, and has not recycled its PID."""
+    try:
+        pid_int = int(pid)
+        if pid_int <= 0 or pid_int == os.getpid():
+            return False
+        # 1. Existence check
+        os.kill(pid_int, 0)
+    except Exception:
+        return False
+
+    # 2. Start time check against session file procStart
+    if expected_proc_start is not None and str(expected_proc_start).strip():
+        actual_start = get_proc_starttime(pid_int)
+        if actual_start is not None and actual_start != str(expected_proc_start).strip():
+            # Process start time does not match: PID reuse detected!
+            return False
+
+    # 3. Executable identity check
+    exe_path = ""
+    try:
+        exe_path = os.readlink(f"/proc/{pid_int}/exe").lower()
+        if "claude" in exe_path:
+            return True
+    except Exception:
+        pass
+
+    try:
+        cmdline_bytes = Path(f"/proc/{pid_int}/cmdline").read_bytes()
+        parts = cmdline_bytes.split(b"\x00")
+        if parts and parts[0]:
+            argv0 = parts[0].decode("utf-8", "replace").lower()
+            if "claude" in argv0:
+                return True
+        cmdline_str = cmdline_bytes.replace(b"\x00", b" ").decode("utf-8", "replace").lower()
+        if "claude" in cmdline_str and ("node" in exe_path or (parts and "node" in parts[0].decode("utf-8", "replace").lower())):
+            return True
+    except Exception:
+        pass
+
+    # Fallback for non-Linux or systems where /proc isn't mounted
+    if not Path("/proc").exists():
+        try:
+            out = subprocess.check_output(["ps", "-p", str(pid_int), "-o", "comm="], stderr=subprocess.DEVNULL, text=True).strip().lower()
+            if "claude" in out:
+                return True
+        except Exception:
+            pass
+
+    return False
+
+
 def read_active_sessions(sessions_dir: Path) -> dict[str, dict[str, Any]]:
-    """Read ~/.claude/sessions/*.json, pruning entries whose pid is no longer alive."""
+    """Read ~/.claude/sessions/*.json, pruning entries whose pid is no longer alive or belongs to another process."""
     active: dict[str, dict[str, Any]] = {}
     if not sessions_dir.exists():
         return active
@@ -227,8 +297,9 @@ def read_active_sessions(sessions_dir: Path) -> dict[str, dict[str, Any]]:
         if not sid or pid is None:
             continue
 
-        if not pid_alive(pid):
-            # Stale session file left behind by a process that exited uncleanly (housekeeping)
+        proc_start = data.get("procStart")
+        if not is_claude_process(pid, proc_start):
+            # Stale session file left behind by a process that exited uncleanly or had its PID recycled
             try:
                 p.unlink()
             except Exception:
@@ -241,7 +312,7 @@ def read_active_sessions(sessions_dir: Path) -> dict[str, dict[str, Any]]:
 
 
 def kill_session(sid: str, base_dir: Path) -> bool:
-    """Find the process backing a session ID and terminate it cleanly."""
+    """Find the process backing a session ID, verify its identity, and terminate it cleanly."""
     sessions_dir = base_dir / "sessions"
     if not sessions_dir.exists():
         return False
@@ -258,7 +329,8 @@ def kill_session(sid: str, base_dir: Path) -> bool:
             continue
 
         pid = data.get("pid")
-        if pid is None or not pid_alive(pid):
+        proc_start = data.get("procStart")
+        if pid is None or not is_claude_process(pid, proc_start):
             return False
 
         try:

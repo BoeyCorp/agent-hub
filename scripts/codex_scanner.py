@@ -780,17 +780,72 @@ def scan(base_dir: Path | None = None, force: bool = False, alert_threshold: int
 scan_codex = scan
 
 
+def is_codex_process(pid: int) -> bool:
+    """Verify that process exists and belongs to Codex."""
+    if pid <= 0 or pid == os.getpid():
+        return False
+    try:
+        os.kill(pid, 0)
+    except Exception:
+        return False
+
+    try:
+        exe = os.readlink(f"/proc/{pid}/exe").lower()
+        if "codex" in exe:
+            return True
+    except Exception:
+        pass
+
+    try:
+        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\x00", b" ").decode("utf-8", "replace").lower()
+        if "codex" in cmdline:
+            return True
+    except Exception:
+        pass
+
+    return not Path("/proc").exists()
+
+
 def kill_session(session_id: str, base_dir: Path | None = None) -> bool:
-    """Terminate the process running a given Codex session ID."""
+    """Terminate the process running a given Codex session ID after verifying identity."""
+    import signal, glob
     base_dir = base_dir or default_base_dir()
     lock_file = base_dir / "thread-writer-locks" / f"{session_id}.lock"
-    if lock_file.exists():
-        try:
-            out = subprocess.check_output(["fuser", "-k", str(lock_file)], stderr=subprocess.DEVNULL, text=True)
-            return True
-        except Exception:
-            pass
-    return False
+    if not lock_file.exists():
+        return False
+
+    pids: set[int] = set()
+    try:
+        out = subprocess.check_output(["fuser", str(lock_file)], stderr=subprocess.DEVNULL, text=True)
+        for token in out.strip().split():
+            clean = "".join(c for c in token if c.isdigit())
+            if clean:
+                pids.add(int(clean))
+    except Exception:
+        pass
+
+    if not pids:
+        target_name = f"thread-writer-locks/{session_id}.lock"
+        for fd_path in glob.glob("/proc/[0-9]*/fd/*"):
+            try:
+                target = os.readlink(fd_path)
+                if target_name in target:
+                    p = int(fd_path.split("/")[2])
+                    if p != os.getpid():
+                        pids.add(p)
+            except Exception:
+                pass
+
+    killed_any = False
+    for pid in pids:
+        if is_codex_process(pid):
+            try:
+                os.kill(pid, signal.SIGTERM)
+                killed_any = True
+            except Exception:
+                pass
+
+    return killed_any
 
 
 def main() -> None:

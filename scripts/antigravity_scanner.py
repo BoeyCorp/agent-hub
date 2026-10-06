@@ -269,8 +269,34 @@ def parse_presence(presence_dir: Path) -> set[str]:
     return active_ids
 
 
+def is_antigravity_process(pid: int) -> bool:
+    """Verify that process exists and belongs to Antigravity/AGY."""
+    if pid <= 0 or pid == os.getpid():
+        return False
+    try:
+        os.kill(pid, 0)
+    except Exception:
+        return False
+
+    try:
+        exe = os.readlink(f"/proc/{pid}/exe").lower()
+        if any(k in exe for k in ("agy", "antigravity", "gemini")):
+            return True
+    except Exception:
+        pass
+
+    try:
+        cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\x00", b" ").decode("utf-8", "replace").lower()
+        if any(k in cmdline for k in ("agy", "antigravity", "gemini", "antigravity-cli")):
+            return True
+    except Exception:
+        pass
+
+    return not Path("/proc").exists()
+
+
 def kill_session(cid: str, base_dir: Path) -> bool:
-    """Find process holding lock for conversationId and terminate it cleanly."""
+    """Find process holding lock for conversationId, verify identity, and terminate it cleanly."""
     import signal
     pids = set()
     lock_file = base_dir / "presence" / f"{cid}.lock"
@@ -286,7 +312,7 @@ def kill_session(cid: str, base_dir: Path) -> bool:
                         dev_ino = parts[5].split(":")
                         if len(dev_ino) == 3 and int(dev_ino[2]) == target_ino:
                             p = int(parts[4])
-                            if p != os.getpid():
+                            if p != os.getpid() and is_antigravity_process(p):
                                 pids.add(p)
         except Exception:
             pass
@@ -299,7 +325,7 @@ def kill_session(cid: str, base_dir: Path) -> bool:
                 target = os.readlink(fd_path)
                 if target_lock in target:
                     p = int(fd_path.split("/")[2])
-                    if p != os.getpid():
+                    if p != os.getpid() and is_antigravity_process(p):
                         pids.add(p)
             except Exception:
                 pass
