@@ -469,6 +469,46 @@ def scan_codex_sessions(base_dir: Path) -> tuple[list[dict[str, Any]], dict[str,
     today_str = date_string(dt.datetime.now().date())
     sessions_root = base_dir / "sessions"
 
+    # Preload thread names from session_index.jsonl if available
+    session_index_file = base_dir / "session_index.jsonl"
+    session_names: dict[str, str] = {}
+    if session_index_file.exists():
+        try:
+            with open(session_index_file, "r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    try:
+                        obj = json.loads(line)
+                        sid = obj.get("id") or obj.get("session_id")
+                        tname = obj.get("thread_name") or obj.get("title")
+                        if sid and tname:
+                            session_names[sid] = tname
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+    # Preload prompts from history.jsonl if available
+    history_file = base_dir / "history.jsonl"
+    history_prompts: dict[str, list[str]] = {}
+    if history_file.exists():
+        try:
+            with open(history_file, "r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    try:
+                        obj = json.loads(line)
+                        sid = obj.get("session_id")
+                        txt = obj.get("text")
+                        if sid and txt:
+                            history_prompts.setdefault(sid, []).append(txt.strip())
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
     files: list[Path] = []
     if sessions_root.exists():
         for p in sessions_root.rglob("*.jsonl"):
@@ -496,8 +536,20 @@ def scan_codex_sessions(base_dir: Path) -> tuple[list[dict[str, Any]], dict[str,
         last_prompt = ""
         step_count = 0
         session_tokens = 0
+        last_task_event = ""
+        has_task_started = False
         mtime_sec = path.stat().st_mtime
         date_str = local_date_from_timestamp(mtime_sec)
+
+        def _record_prompt(raw_text: Any):
+            nonlocal first_prompt, last_prompt
+            if not raw_text:
+                return
+            t = str(raw_text).strip()
+            if t and not t.startswith("<"):
+                if not first_prompt:
+                    first_prompt = t
+                last_prompt = t
 
         try:
             with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -525,12 +577,26 @@ def scan_codex_sessions(base_dir: Path) -> tuple[list[dict[str, Any]], dict[str,
                             model = clean_model_display_name(m)
                     elif etype == "event_msg":
                         msg_type = payload.get("type")
-                        if msg_type in ("user_message", "user_input"):
-                            text = payload.get("message") or payload.get("text") or ""
-                            if not first_prompt:
-                                first_prompt = text
-                            last_prompt = text
+                        if msg_type == "task_started":
+                            last_task_event = "task_started"
+                            has_task_started = True
                             daily_stats[date_str] += 1
+                        elif msg_type == "task_complete":
+                            last_task_event = "task_complete"
+                        elif msg_type in ("user_message", "user_input"):
+                            text = payload.get("message") or payload.get("text") or ""
+                            _record_prompt(text)
+                            if not has_task_started:
+                                daily_stats[date_str] += 1
+                        elif msg_type == "item_completed":
+                            item_obj = payload.get("item") or {}
+                            itype = item_obj.get("type")
+                            if itype == "UserMessage":
+                                for c in (item_obj.get("content") or []):
+                                    if isinstance(c, dict) and c.get("text"):
+                                        _record_prompt(c.get("text"))
+                            elif itype in ("AgentMessage", "AssistantMessage"):
+                                step_count += 1
                         elif msg_type == "token_count":
                             info = payload.get("info") or {}
                             last_usage = info.get("last_token_usage") or {}
@@ -564,21 +630,30 @@ def scan_codex_sessions(base_dir: Path) -> tuple[list[dict[str, Any]], dict[str,
                             tool_counter[tname] += 1
                     elif etype == "response_item":
                         p = payload.get("payload") or payload
-                        if isinstance(p, dict) and p.get("type") == "token_count":
-                            info = p.get("info") or {}
-                            last_usage = info.get("last_token_usage") or {}
-                            cread = int(last_usage.get("cached_input_tokens") or 0)
-                            inp = max(0, int(last_usage.get("input_tokens") or 0) - cread)
-                            out = int(last_usage.get("output_tokens") or 0)
-                            tot = cread + inp + out
-                            session_tokens += tot
-                            total_tokens_all += tot
-                            if date_str == today_str:
-                                today_cache_read += cread
-                                today_input += inp
-                                today_output += out
-                                today_model_tokens[model] += tot
-                                today_token_cost += estimate_codex_token_cost(model, inp, out, cread, 0)
+                        if isinstance(p, dict):
+                            role = payload.get("role") or p.get("role")
+                            if role == "user":
+                                for c in (payload.get("content") or p.get("content") or []):
+                                    if isinstance(c, dict) and c.get("text"):
+                                        _record_prompt(c.get("text"))
+                            elif p.get("type") == "token_count":
+                                info = p.get("info") or {}
+                                last_usage = info.get("last_token_usage") or {}
+                                cread = int(last_usage.get("cached_input_tokens") or 0)
+                                inp = max(0, int(last_usage.get("input_tokens") or 0) - cread)
+                                out = int(last_usage.get("output_tokens") or 0)
+                                tot = cread + inp + out
+                                session_tokens += tot
+                                total_tokens_all += tot
+                                if date_str == today_str:
+                                    today_cache_read += cread
+                                    today_input += inp
+                                    today_output += out
+                                    today_model_tokens[model] += tot
+                                    today_token_cost += estimate_codex_token_cost(model, inp, out, cread, 0)
+                            elif p.get("type") in ("custom_tool_call", "function_call") or payload.get("type") in ("custom_tool_call", "function_call"):
+                                tname = payload.get("name") or p.get("name") or "tool"
+                                tool_counter[tname] += 1
         except Exception:
             continue
 
@@ -587,6 +662,20 @@ def scan_codex_sessions(base_dir: Path) -> tuple[list[dict[str, Any]], dict[str,
         if cid in seen_ids:
             continue
         seen_ids.add(cid)
+
+        # Fallback prompts from history if not extracted from rollout
+        if not first_prompt and cid in history_prompts:
+            first_prompt = history_prompts[cid][0]
+            last_prompt = history_prompts[cid][-1]
+
+        # Determine if this session is currently executing a turn
+        now_ts = time.time()
+        if last_task_event == "task_started":
+            is_working_turn = True
+        elif last_task_event == "task_complete":
+            is_working_turn = False
+        else:
+            is_working_turn = bool(now_ts - mtime_sec < 2.0)
 
         # Update model prompts and steps
         mbucket = model_stats.setdefault(model, {
@@ -603,7 +692,7 @@ def scan_codex_sessions(base_dir: Path) -> tuple[list[dict[str, Any]], dict[str,
         ws_name = Path(ws_clean).name if ws_clean else "Workspace"
         ws_counter[ws_clean] += 1
 
-        title = first_prompt or last_prompt or f"Session {cid[:8]}"
+        title = session_names.get(cid) or first_prompt or last_prompt or f"Session {cid[:8]}"
         preview = last_prompt or first_prompt or title
         iso_mod = dt.datetime.fromtimestamp(mtime_sec, tz=dt.timezone.utc).isoformat() if mtime_sec else ""
 
@@ -618,7 +707,8 @@ def scan_codex_sessions(base_dir: Path) -> tuple[list[dict[str, Any]], dict[str,
             "workspaceName": ws_name,
             "status": "idle",
             "agentName": "Codex",
-            "notFullyIdle": False,
+            "notFullyIdle": is_working_turn,
+            "isWorking": is_working_turn,
             "killed": False,
             "isActive": False,
             "isSubagent": False,
@@ -666,9 +756,10 @@ def scan(base_dir: Path | None = None, force: bool = False, alert_threshold: int
             s["isActive"] = True
             s["status"] = "active"
             s["pid"] = active_locks[cid]
-            # If PID found or thread snapshot recently updated, mark as working
-            s["notFullyIdle"] = bool(active_locks[cid] > 0)
-            if s["notFullyIdle"]:
+            is_work = bool(s.get("isWorking", False))
+            s["notFullyIdle"] = is_work
+            s["isWorking"] = is_work
+            if is_work:
                 any_working = True
             active_sessions.append(s)
 
@@ -678,15 +769,16 @@ def scan(base_dir: Path | None = None, force: bool = False, alert_threshold: int
             item = {
                 "conversationId": tid,
                 "title": f"Codex Session {tid[:8]}",
-                "preview": "Active turn in progress...",
-                "stepCount": 1,
+                "preview": "Waiting for user prompt...",
+                "stepCount": 0,
                 "lastModified": dt.datetime.now(dt.timezone.utc).isoformat(),
                 "date": today_str,
                 "workspace": "/home/boeyadmin",
                 "workspaceName": "boeyadmin",
                 "status": "active",
                 "agentName": "Codex",
-                "notFullyIdle": True,
+                "notFullyIdle": False,
+                "isWorking": False,
                 "killed": False,
                 "isActive": True,
                 "isSubagent": False,
@@ -697,7 +789,6 @@ def scan(base_dir: Path | None = None, force: bool = False, alert_threshold: int
             }
             sessions.insert(0, item)
             active_sessions.insert(0, item)
-            any_working = True
 
     active_status = "Working" if any_working else ("Waiting" if has_active_session else "Idle")
 

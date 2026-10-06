@@ -20,6 +20,8 @@
       "refreshIntervalSec": 60,
       "badgeMode": "active",
       "showBadge": true,
+      "enableMultiDot": true,
+      "multiDotMode": "active",
       "enableQuotaAlerts": true,
       "quotaAlertThreshold": 15,
       "notifyOnReplenish": true,
@@ -52,6 +54,19 @@
         "type": "boolean",
         "label": "Show count badge in bar",
         "defaultValue": true
+      },
+      {
+        "key": "enableMultiDot",
+        "type": "boolean",
+        "label": "Show per-agent status dots in bar",
+        "defaultValue": true
+      },
+      {
+        "key": "multiDotMode",
+        "type": "enum",
+        "label": "Multi-dot bar display mode",
+        "options": ["active", "all"],
+        "defaultValue": "active"
       },
       {
         "key": "enableQuotaAlerts",

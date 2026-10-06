@@ -71,12 +71,57 @@ class TestHubScanner(unittest.TestCase):
         self.assertIn("codex", res["providers"])
         self.assertIn("codexData", res)
         self.assertIn("agentStates", res)
-        self.assertIn("claude", res["agentStates"])
-        self.assertIn("antigravity", res["agentStates"])
-        self.assertIn("codex", res["agentStates"])
-        self.assertIn("color", res["agentStates"]["claude"])
-        self.assertIn("color", res["agentStates"]["antigravity"])
-        self.assertIn("color", res["agentStates"]["codex"])
+        for p in ("claude", "antigravity", "codex"):
+            self.assertIn(p, res["agentStates"])
+            st = res["agentStates"][p]
+            self.assertIn("color", st)
+            self.assertIn("name", st)
+            self.assertIsInstance(st["active"], bool)
+            self.assertIsInstance(st["working"], bool)
+            self.assertIsInstance(st["waiting"], bool)
+            self.assertEqual(st["waiting"], st["active"] and not st["working"])
+            self.assertIn(st["status"], ("Working", "Waiting", "Idle"))
+            if st["working"]:
+                self.assertTrue(st["active"])
+                self.assertEqual(st["status"], "Working")
+            elif st["waiting"]:
+                self.assertTrue(st["active"])
+                self.assertEqual(st["status"], "Waiting")
+            else:
+                self.assertFalse(st["active"])
+                self.assertEqual(st["status"], "Idle")
+
+    def test_agent_activity_states_invariants(self):
+        from unittest.mock import patch
+
+        cases = [
+            # (c_active, c_status, a_active, a_status, x_active, x_status, expected_overall)
+            (True, "Working", False, "Idle", True, "Waiting", "Working"),
+            (False, "Idle", True, "Waiting", True, "Waiting", "Waiting"),
+            (False, "Idle", False, "Idle", False, "Idle", "Idle"),
+            (False, "Idle", False, "Idle", True, "Working", "Working"),
+        ]
+
+        from scripts import hub_scanner
+
+        for c_act, c_stat, a_act, a_stat, x_act, x_stat, exp_overall in cases:
+            c_mock = {"hasActiveSession": c_act, "activeStatus": c_stat, "activeSessions": [], "recentSessions": [], "quotaGroups": [], "todayPrompts": 0, "todaySteps": 0, "todayTotalTokens": 0, "todayTokenCost": 0.0, "todayCacheReadTokens": 0, "todayCacheCreationTokens": 0, "todayInputTokens": 0, "todayOutputTokens": 0, "todayCacheHitRate": 0.0, "recentDays": [], "toolUsage": {}, "models": []}
+            a_mock = {"hasActiveSession": a_act, "activeStatus": a_stat, "activeSessions": [], "recentSessions": [], "quotaGroups": [], "todayPrompts": 0, "todaySteps": 0, "todayTotalTokens": 0, "todayTokenCost": 0.0, "todayCacheReadTokens": 0, "todayCacheCreationTokens": 0, "todayInputTokens": 0, "todayOutputTokens": 0, "todayCacheHitRate": 0.0, "recentDays": [], "toolUsage": {}, "models": []}
+            x_mock = {"hasActiveSession": x_act, "activeStatus": x_stat, "activeSessions": [], "recentSessions": [], "quotaGroups": [], "todayPrompts": 0, "todaySteps": 0, "todayTotalTokens": 0, "todayTokenCost": 0.0, "todayCacheReadTokens": 0, "todayCacheCreationTokens": 0, "todayInputTokens": 0, "todayOutputTokens": 0, "todayCacheHitRate": 0.0, "recentDays": [], "toolUsage": {}, "models": []}
+
+            with patch.object(hub_scanner.claude_scanner, "scan", return_value=c_mock), \
+                 patch.object(hub_scanner.antigravity_scanner, "scan", return_value=a_mock), \
+                 patch.object(hub_scanner.codex_scanner, "scan", return_value=x_mock):
+                res = scan_hub(enable_claude=True, enable_antigravity=True, enable_codex=True, force=True)
+
+            self.assertEqual(res["activeStatus"], exp_overall)
+
+            # Test Codex states specifically
+            codex_st = res["agentStates"]["codex"]
+            self.assertEqual(codex_st["active"], x_act)
+            self.assertEqual(codex_st["working"], x_act and x_stat == "Working")
+            self.assertEqual(codex_st["waiting"], x_act and x_stat != "Working")
+            self.assertEqual(codex_st["status"], x_stat if x_act else "Idle")
 
     def test_focus_script_help(self):
         import subprocess
