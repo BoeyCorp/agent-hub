@@ -1998,6 +1998,17 @@ BarWidget {
       }
     }
 
+    // Provider Quota Groups (matching Overview page QuotaGroupView)
+    SectionCard {
+      title: "Quota Limits & Reset Forecasting"
+      subtitle: dataPayload.tierLabel || "Hourly consumption burn rates and reset projections"
+      visible: Boolean(dataPayload && dataPayload.quotaGroups && dataPayload.quotaGroups.length > 0)
+
+      QuotaGroupView {
+        quotaGroups: dataPayload.quotaGroups || []
+      }
+    }
+
     // Model Usage Breakdown
     SectionCard {
       title: "Model Usage Breakdown"
@@ -2057,17 +2068,6 @@ BarWidget {
             }
           }
         }
-      }
-    }
-
-    // Provider Quota Groups (matching Overview page QuotaGroupView)
-    SectionCard {
-      title: "Quota Limits & Reset Forecasting"
-      subtitle: dataPayload.tierLabel || "Hourly consumption burn rates and reset projections"
-      visible: Boolean(dataPayload && dataPayload.quotaGroups && dataPayload.quotaGroups.length > 0)
-
-      QuotaGroupView {
-        quotaGroups: dataPayload.quotaGroups || []
       }
     }
 
