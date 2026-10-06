@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="256" height="256" fill="none">
+  <!-- Outer Constellation Polygon / Shield Lines -->
+  <polygon points="12,1.8 21.5,7.5 21.5,16.5 12,22.2 2.5,16.5 2.5,7.5" 
+           stroke="#ffffff" stroke-width="1.2" stroke-opacity="0.3" stroke-dasharray="2 1.5"/>
+
+  <!-- Internal Connective Trusses Linking Agent Cores -->
+  <line x1="12" y1="5.5" x2="6.5" y2="15.5" stroke="#ffffff" stroke-width="1.2" stroke-opacity="0.35"/>
+  <line x1="12" y1="5.5" x2="17.5" y2="15.5" stroke="#ffffff" stroke-width="1.2" stroke-opacity="0.35"/>
+  <line x1="6.5" y1="15.5" x2="17.5" y2="15.5" stroke="#ffffff" stroke-width="1.2" stroke-opacity="0.35"/>
+
+  <!-- Central Fusion Nexus -->
+  <circle cx="12" cy="12" r="1.8" fill="#ffffff"/>
+
+  <!-- Node 1: Antigravity Sparkle (Top Vertex: (12, 5.5)) -->
+  <path d="M12 2 C12 4.2 10.2 5.5 8 5.5 C10.2 5.5 12 6.8 12 9 C12 6.8 13.8 5.5 16 5.5 C13.8 5.5 12 4.2 12 2 Z" fill="#38BDF8"/>
+
+  <!-- Node 2: Claude Asterism (Bottom-Left Vertex: (6.5, 15.5)) -->
+  <g transform="translate(6.5, 15.5) scale(0.38) translate(-12, -12)">
+    <path d="M12,12 C10.7,12 10,9.8 10,7 C10,4.2 10.9,1 12,1 C13.1,1 14,4.2 14,7 C14,9.8 13.3,12 12,12 Z" fill="#D97757"/>
+    <path transform="rotate(60 12 12)" d="M12,12 C10.7,12 10,9.8 10,7 C10,4.2 10.9,1 12,1 C13.1,1 14,4.2 14,7 C14,9.8 13.3,12 12,12 Z" fill="#D97757"/>
+    <path transform="rotate(120 12 12)" d="M12,12 C10.7,12 10,9.8 10,7 C10,4.2 10.9,1 12,1 C13.1,1 14,4.2 14,7 C14,9.8 13.3,12 12,12 Z" fill="#D97757"/>
+    <path transform="rotate(180 12 12)" d="M12,12 C10.7,12 10,9.8 10,7 C10,4.2 10.9,1 12,1 C13.1,1 14,4.2 14,7 C14,9.8 13.3,12 12,12 Z" fill="#D97757"/>
+    <path transform="rotate(240 12 12)" d="M12,12 C10.7,12 10,9.8 10,7 C10,4.2 10.9,1 12,1 C13.1,1 14,4.2 14,7 C14,9.8 13.3,12 12,12 Z" fill="#D97757"/>
+    <path transform="rotate(300 12 12)" d="M12,12 C10.7,12 10,9.8 10,7 C10,4.2 10.9,1 12,1 C13.1,1 14,4.2 14,7 C14,9.8 13.3,12 12,12 Z" fill="#D97757"/>
+  </g>
+
+  <!-- Node 3: Codex Terminal Prompt (Bottom-Right Vertex: (17.5, 15.5)) -->
+  <g transform="translate(17.5, 15.5)">
+    <circle cx="0" cy="0" r="4.2" fill="#181825" stroke="#10A37F" stroke-width="1.2"/>
+    <path d="M-1.8 -1.8 L0.5 0 L-1.8 1.8" stroke="#10A37F" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M1.2 1.8 H2.8" stroke="#10A37F" stroke-width="1.2" stroke-linecap="round"/>
+  </g>
+</svg>
