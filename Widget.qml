@@ -393,8 +393,17 @@ BarWidget {
     var count = provider.activeSessions ? provider.activeSessions.length : (provider.hasActiveSession ? 1 : 0)
     var status = provider.hasActiveSession ? " (" + count + " active)" : " (Idle)"
     var tokensFmt = usageMain.formatNumber(provider.todayTotalTokens || 0)
+    var refMs = (provider && provider.lastFullRefreshMs > 0) ? provider.lastFullRefreshMs : (provider ? provider.lastUpdatedMs : 0)
+    var ageSec = refMs > 0 ? Math.max(0, Math.floor((root.nowMs - refMs) / 1000)) : -1
+    var refText = ""
+    if (ageSec >= 0) {
+      if (ageSec < 10) refText = " • Refreshed just now"
+      else if (ageSec < 60) refText = " • Refreshed " + ageSec + "s ago"
+      else if (ageSec < 3600) refText = " • Refreshed " + Math.floor(ageSec / 60) + "m ago"
+      else refText = " • Refreshed " + Math.floor(ageSec / 3600) + "h ago"
+    }
     return "Agent Hub" + status + "\n" +
-           (provider.todayPrompts || 0) + " prompts today • " + tokensFmt + " tokens\n" +
+           (provider.todayPrompts || 0) + " prompts today • " + tokensFmt + " tokens" + refText + "\n" +
            "Claude Code & Google Antigravity"
   }
 
@@ -742,6 +751,9 @@ BarWidget {
     signal settingsClicked()
     signal newSessionClicked()
 
+    readonly property double refMs: (root.provider && root.provider.lastFullRefreshMs > 0) ? root.provider.lastFullRefreshMs : (root.provider ? root.provider.lastUpdatedMs : 0)
+    readonly property int ageSec: refMs > 0 ? Math.max(0, Math.floor((root.nowMs - refMs) / 1000)) : -1
+
     Layout.fillWidth: true
     color: root.card
     borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05), 1)
@@ -773,14 +785,80 @@ BarWidget {
           font.bold: true
         }
 
-        Text {
-          textFormat: Text.PlainText
-          text: hdr.subtitle
-          color: root.dim
-          font.family: root.fontFamily
-          font.pixelSize: 9
-          elide: Text.ElideRight
+        RowLayout {
           Layout.fillWidth: true
+          spacing: 4
+
+          Text {
+            textFormat: Text.PlainText
+            text: hdr.subtitle
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: 9
+            elide: Text.ElideRight
+            Layout.fillWidth: true
+          }
+
+          RowLayout {
+            spacing: 3
+            visible: !hdr.refreshing && hdr.ageSec >= 0
+
+            Text {
+              textFormat: Text.PlainText
+              text: ""
+              color: hdr.ageSec > 300 ? root.urgent : root.dim
+              font.family: root.fontFamily
+              font.pixelSize: 8
+              opacity: 0.7
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              text: {
+                var a = hdr.ageSec
+                if (a < 0) return ""
+                if (a < 10) return "Refreshed just now"
+                if (a < 60) return "Refreshed " + a + "s ago"
+                if (a < 3600) return "Refreshed " + Math.floor(a / 60) + "m ago"
+                return "Refreshed " + Math.floor(a / 3600) + "h " + Math.floor((a % 3600) / 60) + "m ago"
+              }
+              color: hdr.ageSec > 300 ? root.urgent : root.dim
+              font.family: root.fontFamily
+              font.pixelSize: 9
+              opacity: 0.8
+            }
+          }
+
+          RowLayout {
+            spacing: 3
+            visible: hdr.refreshing
+
+            Text {
+              textFormat: Text.PlainText
+              text: ""
+              color: root.accent
+              font.family: root.fontFamily
+              font.pixelSize: 8
+              transformOrigin: Item.Center
+
+              RotationAnimation on rotation {
+                running: hdr.refreshing
+                loops: Animation.Infinite
+                from: 0
+                to: 360
+                duration: 800
+              }
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              text: "Refreshing…"
+              color: root.accent
+              font.family: root.fontFamily
+              font.pixelSize: 9
+              opacity: 0.9
+            }
+          }
         }
       }
 
@@ -819,12 +897,22 @@ BarWidget {
           Layout.preferredWidth: 22
 
           Text {
+            id: refBtnIcon
             anchors.centerIn: parent
             textFormat: Text.PlainText
             text: ""
-            color: root.foreground
+            color: hdr.refreshing ? root.accent : root.foreground
             font.family: root.fontFamily
             font.pixelSize: 11
+            transformOrigin: Item.Center
+
+            RotationAnimation on rotation {
+              running: hdr.refreshing
+              loops: Animation.Infinite
+              from: 0
+              to: 360
+              duration: 800
+            }
           }
 
           MouseArea {
@@ -858,6 +946,37 @@ BarWidget {
             cursorShape: Qt.PointingHandCursor
             onClicked: hdr.settingsClicked()
           }
+        }
+      }
+    }
+
+    // Animated progress glow during refresh
+    Rectangle {
+      id: refreshProgressBar
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      anchors.bottomMargin: 1
+      height: 2
+      color: "transparent"
+      clip: true
+      visible: hdr.refreshing
+
+      Rectangle {
+        id: glowPill
+        anchors.verticalCenter: parent.verticalCenter
+        height: 2
+        width: Math.max(50, parent.width * 0.35)
+        radius: 1
+        color: root.accent
+
+        NumberAnimation on x {
+          running: hdr.refreshing && root.popupOpen
+          loops: Animation.Infinite
+          from: -glowPill.width
+          to: refreshProgressBar.width
+          duration: 800
+          easing.type: Easing.InOutQuad
         }
       }
     }
