@@ -527,15 +527,7 @@ BarWidget {
           sourceSize.height: Math.round(13 * (Screen.devicePixelRatio || 1))
           fillMode: Image.PreserveAspectFit
           anchors.centerIn: parent
-          visible: false
-          layer.enabled: true
-        }
-
-        MultiEffect {
-          anchors.fill: barIconImage
-          source: barIconImage
-          colorization: 1.0
-          colorizationColor: root.foreground
+          visible: true
         }
 
         // Active pulse glow (legacy fallback when multi-dot is disabled)
