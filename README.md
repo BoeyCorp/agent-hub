@@ -1,6 +1,18 @@
 # Agent Hub for Omarchy
 
-**Agent Hub** is a unified multi-agent session monitor, prompt & token telemetry dashboard, quota burn forecasting engine, and interactive launcher for **Claude Code** and **Google Antigravity** in the Omarchy top bar.
+**Agent Hub** is a unified multi-agent session monitor, prompt & token telemetry dashboard, quota burn forecasting engine, and interactive launcher for **Claude Code**, **Google Antigravity (AGY)**, and **OpenAI Codex** in the Omarchy top bar.
+
+---
+
+## Screenshots
+
+| Overview Cockpit | Settings Panel |
+| :---: | :---: |
+| ![Overview Tab](assets/screenshots/overview.png) | ![Settings Panel](assets/screenshots/settings.png) |
+
+| Claude Code | Google Antigravity | OpenAI Codex |
+| :---: | :---: | :---: |
+| ![Claude Code Tab](assets/screenshots/claude.png) | ![Google Antigravity Tab](assets/screenshots/antigravity.png) | ![OpenAI Codex Tab](assets/screenshots/codex.png) |
 
 ---
 
@@ -22,37 +34,42 @@
 
 ### 2. Tabbed Cockpit: Overview & Dedicated Agent Deep-Dives
 - **Segmented Tab Switcher**: Seamlessly toggle between:
-  - **Overview**: Consolidated cross-agent activity, shared quota limits, interleaved recent session feed, combined 7-day chart, and normalized tool telemetry.
-  - **Claude Code**: Dedicated deep-dive for Claude Code (models, token metrics, quota limits, recent sessions).
-  - **Antigravity**: Dedicated deep-dive for Google Antigravity (Gemini & 3P models, token metrics, quota limits, recent sessions).
-- **Fast Keyboard Navigation**: Press `1` for Overview, `2` for Claude Code, `3` for Antigravity, or use `Tab`.
+  - **Overview**: Consolidated cross-agent activity, shared quota limits, interleaved recent session feed, combined prompt cache efficiency, and normalized tool telemetry.
+  - **Claude Code**: Dedicated deep-dive for Claude Code (models, token metrics, session & weekly quota limits, recent sessions).
+  - **Antigravity**: Dedicated deep-dive for Google Antigravity (Gemini & 3P Claude/GPT models, token metrics, quota limits, recent sessions).
+  - **Codex**: Dedicated deep-dive for OpenAI Codex (GPT models, token metrics, monthly quota limits, recent sessions).
+- **Fast Keyboard Navigation**: Press `1` for Overview, `2` for Claude Code, `3` for Antigravity, `4` for Codex, or use `Tab`.
 
 ### 3. Real Token Analytics & Prompt Cache Telemetry
 - **Actual Token Extraction**:
   - Claude Code: Aggregates `input_tokens`, `output_tokens`, and prompt cache creation/read tokens directly from transcript files.
   - Antigravity: Parses `input_tokens`, `output_tokens`, and `cache_read_tokens` directly from `PLANNER_RESPONSE` transcript steps.
-- **Per-Agent Breakdown**: Overview tab displays side-by-side token consumption (e.g. `Claude: 45.2k · Antigravity: 8.9M`).
+  - OpenAI Codex: Aggregates input and output tokens and daily prompt counts across local session logs.
+- **Per-Agent Breakdown**: Overview tab displays side-by-side token consumption (e.g. `Claude: 2.7M · Antigravity: 168.1M · Codex: 0`).
+- **Prompt Cache Efficiency**: Real-time cache hit rate percentage and total cached tokens saved.
 
 ### 4. Consolidated Quota Limits & Reset Forecasting
 - **Multi-Account Quota Grid**:
   - Claude Code: Authoritative Session (5-hour) and Weekly (7-day) quotas via Omarchy's OAuth collector.
   - Antigravity: Gemini (Weekly & 5-Hour) and Claude/GPT 3P (Weekly & 5-Hour) limits via `agy /usage`.
+  - OpenAI Codex: Monthly quota limits and reset schedules via Codex CLI.
 - **Hourly Burn-Rate Velocity**: Real-time consumption tracking (`🔥 X%/h`).
 - **Intelligent Reset Projections**: Pacing calculations (`On pace · ~64% at reset` or early alerts `Tight pace · ~9% at reset`).
 - **Low Quota Desktop Alerts**: Configurable desktop notification thresholds (5% to 50%) via `omarchy-notification-send`.
 
 ### 5. Interactive Session Management & Terminal Launcher
-- **Unified Recent Sessions Feed**: Interleaved chronological feed of recent sessions tagged with styled agent pills (`[CLAUDE]` or `[AGY]`).
-- **Quick Terminal Resume**: Click any session card or press `4`–`9` to resume in your terminal (`claude --resume <id>` or `agy --conversation <id>`).
+- **Unified Recent Sessions Feed**: Interleaved chronological feed of recent sessions tagged with styled agent pills (`[CLAUDE]`, `[AGY]`, `[CODEX]`).
+- **Quick Terminal Resume**: Click any session card or press `5`–`9` to resume in your terminal (`claude --resume <id>`, `agy --conversation <id>`, or `codex resume <id>`).
 - **Clean Process Termination**: Hover over any running session and click the red `` button to terminate the session process cleanly (`SIGTERM`).
 - **New Session Launcher**: Click the `` header button or press `n` to launch a new session in your chosen terminal emulator.
 - **Terminal Emulator Override**: Configurable terminal command (e.g. `foot`, `ghostty`, `kitty`, `alacritty`, or default `xdg-terminal-exec`).
 
 ### 6. Zero-Latency Live Hook Updates
-- Wires lifecycle events for both agents to push instant refreshes to the bar:
+- Wires lifecycle events for agents to push instant refreshes to the bar:
   - Claude Code: `SessionStart`, `UserPromptSubmit`, `Stop`, `Notification`, `PermissionRequest`, `SessionEnd`.
   - Google Antigravity: `PreInvocation`, `PostInvocation`, `Stop` via `hooks.json`.
-- **One-Click Management**: Toggle or install/remove hooks for all agents directly from the settings panel.
+  - OpenAI Codex: Live session tracking via file monitoring and process discovery.
+- **One-Click Management**: Toggle or install/remove hooks for agents directly from the settings panel.
 
 ---
 
@@ -78,7 +95,8 @@ omarchy restart shell
 | `1` | Switch to Overview tab |
 | `2` | Switch to Claude Code tab |
 | `3` | Switch to Antigravity tab |
-| `4`–`9` | Quick-resume corresponding session in terminal |
+| `4` | Switch to Codex tab |
+| `5`–`9` | Quick-resume corresponding session in terminal |
 | `n` | Launch new terminal session for active agent tab |
 | `r` | Force refresh telemetry and quota limits |
 | `s` | Toggle between Stats and Settings view |
@@ -94,6 +112,7 @@ The widget registers an IPC target (`boeycorp.agent-hub`), callable via `omarchy
 | Close popup | `omarchy-shell boeycorp.agent-hub close` |
 | Refresh telemetry | `omarchy-shell boeycorp.agent-hub refresh` |
 | Open settings | `omarchy-shell boeycorp.agent-hub settings` |
+| Switch active tab | `omarchy-shell boeycorp.agent-hub setTab <overview\|claude\|antigravity\|codex>` |
 
 ---
 
@@ -107,7 +126,8 @@ Settings can be adjusted directly in the widget's in-popup settings view (right-
 | `badgeMode` | enum | `"active"` | Bar badge mode (`active`, `prompts`, `tokens`, `quota`, `off`) |
 | `enableClaude` | boolean | `true` | Enable Claude Code agent integration |
 | `enableAntigravity` | boolean | `true` | Enable Google Antigravity agent integration |
-| `defaultTab` | enum | `"overview"` | Default tab on popup open (`overview`, `claude`, `antigravity`) |
+| `enableCodex` | boolean | `true` | Enable OpenAI Codex agent integration |
+| `defaultTab` | enum | `"overview"` | Default tab on popup open (`overview`, `claude`, `antigravity`, `codex`) |
 | `enableQuotaAlerts` | boolean | `true` | Send desktop notifications when quota falls below threshold |
 | `quotaAlertThreshold` | integer (5–50) | `15` | Low quota percentage alert threshold |
 | `terminalCommand` | string | `""` | Terminal emulator command override (blank for `xdg-terminal-exec`) |
