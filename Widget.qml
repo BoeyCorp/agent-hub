@@ -2014,31 +2014,10 @@ BarWidget {
             required property var modelData
             Layout.fillWidth: true
             spacing: 2
-            readonly property bool isClaudeGpt: (modelData.name || "").indexOf("Claude") !== -1 || (modelData.name || "").indexOf("GPT") !== -1
 
             RowLayout {
               Layout.fillWidth: true
               spacing: 4
-
-              // Agent / Model Group Badge (Antigravity tab)
-              Rectangle {
-                visible: agentId === "antigravity"
-                radius: 2
-                color: isClaudeGpt ? "#D97757" : "#38BDF8"
-                Layout.preferredHeight: 12
-                Layout.preferredWidth: mTypeTag.implicitWidth + 6
-
-                Text {
-                  id: mTypeTag
-                  anchors.centerIn: parent
-                  textFormat: Text.PlainText
-                  text: isClaudeGpt ? "CLAUDE / GPT" : "GEMINI"
-                  color: "#FFFFFF"
-                  font.family: root.fontFamily
-                  font.pixelSize: 7
-                  font.bold: true
-                }
-              }
 
               Text {
                 textFormat: Text.PlainText
@@ -2073,7 +2052,7 @@ BarWidget {
                 anchors.bottom: parent.bottom
                 width: parent.width * Math.min(1.0, Math.max(0.0, Number(modelData.shareFraction || 0)))
                 radius: 2
-                color: isClaudeGpt ? "#D97757" : (agentId === "antigravity" ? "#38BDF8" : (modelData.color || agentColor))
+                color: modelData.color || agentColor
               }
             }
           }
