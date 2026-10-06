@@ -209,6 +209,29 @@ def scan_hub(
         else:
             codex_data = codex_scanner.empty_result()
 
+    # Ensure todayTokenCost is always populated for each provider
+    for a_data, cost_func, def_model in [
+        (claude_data, claude_scanner.estimate_claude_token_cost, "Claude (Default)"),
+        (antigravity_data, antigravity_scanner.estimate_antigravity_token_cost, "Gemini 3.8 Flash (High)"),
+        (codex_data, codex_scanner.estimate_codex_token_cost, "GPT-6 Luna"),
+    ]:
+        if "todayTokenCost" not in a_data or a_data.get("todayTokenCost") is None or (a_data.get("todayTokenCost") == 0.0 and int(a_data.get("todayTotalTokens", 0)) > 0):
+            tok = int(a_data.get("todayTotalTokens", 0))
+            if tok > 0:
+                inp = int(a_data.get("todayInputTokens", 0))
+                out = int(a_data.get("todayOutputTokens", 0))
+                cread = int(a_data.get("todayCacheReadTokens", 0))
+                cwrite = int(a_data.get("todayCacheCreationTokens", 0))
+                if inp == 0 and out == 0:
+                    inp, out = int(tok * 0.8), int(tok * 0.2)
+                try:
+                    c = cost_func(a_data.get("currentModel", def_model), inp, out, cread, cwrite)
+                except TypeError:
+                    c = cost_func(a_data.get("currentModel", def_model), inp, out, cread)
+                a_data["todayTokenCost"] = round(c, 2)
+            else:
+                a_data["todayTokenCost"] = 0.0
+
     # Determine overall activity state
     claude_active = bool(claude_data.get("hasActiveSession", False))
     claude_working = claude_data.get("activeStatus") == "Working"

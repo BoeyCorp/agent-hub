@@ -1493,6 +1493,21 @@ def scan(base_dir: Path, force: bool = False, alert_threshold: int | None = None
                     if isinstance(cached, dict) and cached.get("ready"):
                         if alert_threshold is not None:
                             check_and_send_quota_notifications(base_dir, cached.get("quotaGroups", []), threshold_pct=alert_threshold)
+                        if "todayTokenCost" not in cached or cached.get("todayTokenCost") is None:
+                            tok = int(cached.get("todayTotalTokens", 0))
+                            c = estimate_antigravity_token_cost(
+                                cached.get("currentModel", "Gemini 3.8 Flash (High)"),
+                                int(cached.get("todayInputTokens", 0)),
+                                int(cached.get("todayOutputTokens", 0)),
+                                int(cached.get("todayCacheReadTokens", 0))
+                            )
+                            if tok > 0 and c <= 0.0:
+                                c = estimate_antigravity_token_cost(
+                                    cached.get("currentModel", "Gemini 3.8 Flash (High)"),
+                                    int(tok * 0.8),
+                                    int(tok * 0.2)
+                                )
+                            cached["todayTokenCost"] = round(c, 2)
                         return cached
         except Exception:
             pass

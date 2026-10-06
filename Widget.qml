@@ -1923,7 +1923,21 @@ BarWidget {
             valColor: agentColor
           }
           StatBlock {
-            value: usageMain.formatCost(dataPayload.todayTokenCost !== undefined ? dataPayload.todayTokenCost : 0)
+            value: {
+              var cost = dataPayload ? dataPayload.todayTokenCost : undefined
+              if (cost !== undefined && cost !== null && Number(cost) > 0) {
+                return usageMain.formatCost(cost)
+              }
+              var tok = Number((dataPayload ? dataPayload.todayTotalTokens : 0) || 0)
+              if (tok > 0) {
+                var m = String((dataPayload ? dataPayload.currentModel : "") || "").toLowerCase()
+                var rate = (agentId === "claude" ? (m.indexOf("opus") !== -1 ? 0.0000043 : 0.0000015)
+                          : (agentId === "codex" ? 0.0000015
+                          : (m.indexOf("pro") !== -1 ? 0.0000015 : 0.000000025)))
+                return usageMain.formatCost(tok * rate)
+              }
+              return "$0.00"
+            }
             label: "token cost today"
             valColor: agentColor
           }
