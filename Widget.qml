@@ -1653,7 +1653,7 @@ BarWidget {
 
               Text {
                 textFormat: Text.PlainText
-                text: (modelData.todayPrompts || 0) + " today · " + (modelData.prompts || 0) + " total"
+                text: (modelData.todayPrompts || 0) + " today" + (modelData.todayTokens ? " · " + usageMain.formatNumber(modelData.todayTokens) + " tok" : "") + " · " + (modelData.prompts || 0) + " total"
                 color: root.dim
                 font.family: root.fontFamily
                 font.pixelSize: 9
