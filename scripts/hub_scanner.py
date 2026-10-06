@@ -316,9 +316,7 @@ def scan_hub(
     now_ms = int(time.time() * 1000)
 
     # Determine status text
-    claude_m = claude_data.get("currentModel") or "Claude"
-    agy_m = antigravity_data.get("currentModel") or "Gemini"
-    status_text = f"{overall_status} • {claude_m} / {agy_m}" if has_active else f"Idle • {claude_m} / {agy_m}"
+    status_text = overall_status if has_active else "Idle"
 
     result = {
         "schemaVersion": 1,
