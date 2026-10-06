@@ -89,6 +89,34 @@ def local_date_from_timestamp(value: Any) -> str:
         return date_string(dt.datetime.now().date())
 
 
+def estimate_codex_token_cost(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read: int = 0,
+    cache_create: int = 0
+) -> float:
+    m = (model or "").lower()
+    if "mini" in m or "nano" in m:
+        rate_in = 0.15 / 1e6
+        rate_out = 0.60 / 1e6
+        rate_cache_read = 0.075 / 1e6
+        rate_cache_create = 0.15 / 1e6
+    else:
+        # GPT-4o, GPT-5, GPT-6 Luna, o1, etc.
+        rate_in = 2.50 / 1e6
+        rate_out = 10.00 / 1e6
+        rate_cache_read = 1.25 / 1e6
+        rate_cache_create = 2.50 / 1e6
+
+    return (
+        input_tokens * rate_in
+        + output_tokens * rate_out
+        + cache_read * rate_cache_read
+        + cache_create * rate_cache_create
+    )
+
+
 def empty_result() -> dict[str, Any]:
     return {
         "schemaVersion": 1,
@@ -105,6 +133,7 @@ def empty_result() -> dict[str, Any]:
         "todaySessions": 0,
         "todaySteps": 0,
         "todayTotalTokens": 0,
+        "todayTokenCost": 0.0,
         "todayTokensByModel": {},
         "todayCacheReadTokens": 0,
         "todayCacheCreationTokens": 0,
@@ -455,6 +484,7 @@ def scan_codex_sessions(base_dir: Path) -> tuple[list[dict[str, Any]], dict[str,
     today_cache_write = 0
     today_input = 0
     today_output = 0
+    today_token_cost = 0.0
 
     seen_ids = set()
 
@@ -526,6 +556,7 @@ def scan_codex_sessions(base_dir: Path) -> tuple[list[dict[str, Any]], dict[str,
                                 today_output += out
                                 today_model_tokens[model] += tot
                                 mbucket["todayTokens"] += tot
+                                today_token_cost += estimate_codex_token_cost(model, inp, out, cread, cwrite)
                         elif msg_type in ("assistant_message", "agent_message", "turn_completed"):
                             step_count += 1
                         elif msg_type in ("tool_call", "function_call"):
@@ -547,6 +578,7 @@ def scan_codex_sessions(base_dir: Path) -> tuple[list[dict[str, Any]], dict[str,
                                 today_input += inp
                                 today_output += out
                                 today_model_tokens[model] += tot
+                                today_token_cost += estimate_codex_token_cost(model, inp, out, cread, 0)
         except Exception:
             continue
 
@@ -603,6 +635,7 @@ def scan_codex_sessions(base_dir: Path) -> tuple[list[dict[str, Any]], dict[str,
         "todayCacheWrite": today_cache_write,
         "todayInput": today_input,
         "todayOutput": today_output,
+        "todayCost": round(today_token_cost, 4),
         "totalTokens": total_tokens_all,
         "toolCounter": tool_counter,
         "wsCounter": ws_counter
@@ -748,6 +781,7 @@ def scan(base_dir: Path | None = None, force: bool = False, alert_threshold: int
         "todaySessions": len([s for s in sessions if s.get("date") == today_str]) or (1 if has_active_session else 0),
         "todaySteps": today_steps,
         "todayTotalTokens": today_total_tokens,
+        "todayTokenCost": round(extra.get("todayCost", 0.0), 2) or (round(estimate_codex_token_cost(current_model, int(today_total_tokens * 0.8), int(today_total_tokens * 0.2)), 2) if today_total_tokens > 0 else 0.0),
         "todayTokensByModel": dict(extra["todayModelTokens"]),
         "todayCacheReadTokens": cache_read,
         "todayCacheCreationTokens": cache_write,

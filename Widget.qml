@@ -1922,6 +1922,11 @@ BarWidget {
             label: "tokens today"
             valColor: agentColor
           }
+          StatBlock {
+            value: usageMain.formatCost(dataPayload.todayTokenCost !== undefined ? dataPayload.todayTokenCost : 0)
+            label: "token cost today"
+            valColor: agentColor
+          }
         }
 
         // Prompt Cache Efficiency Pill

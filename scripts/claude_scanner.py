@@ -102,7 +102,37 @@ def read_configured_model(base_dir: Path | None = None) -> str:
                             return sanitize_plain_text(m.strip(), 80)
             except Exception:
                 pass
-    return "Claude (Default)"
+def estimate_claude_token_cost(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read: int = 0,
+    cache_create: int = 0
+) -> float:
+    m = (model or "").lower()
+    if "opus" in m:
+        rate_in = 15.00 / 1e6
+        rate_out = 75.00 / 1e6
+        rate_cache_read = 1.50 / 1e6
+        rate_cache_create = 18.75 / 1e6
+    elif "haiku" in m:
+        rate_in = 0.80 / 1e6
+        rate_out = 4.00 / 1e6
+        rate_cache_read = 0.08 / 1e6
+        rate_cache_create = 1.00 / 1e6
+    else:
+        # Sonnet (3.5 / 3.7 / 4.x Sonnet) and default
+        rate_in = 3.00 / 1e6
+        rate_out = 15.00 / 1e6
+        rate_cache_read = 0.30 / 1e6
+        rate_cache_create = 3.75 / 1e6
+
+    return (
+        input_tokens * rate_in
+        + output_tokens * rate_out
+        + cache_read * rate_cache_read
+        + cache_create * rate_cache_create
+    )
 
 
 def empty_result(base_dir: Path | None = None) -> dict[str, Any]:
@@ -123,6 +153,7 @@ def empty_result(base_dir: Path | None = None) -> dict[str, Any]:
         "todaySessions": 0,
         "todaySteps": 0,
         "todayTotalTokens": 0,
+        "todayTokenCost": 0.0,
         "todayTokensByModel": {},
         "recentDays": [{"date": day, "messageCount": 0, "prompts": 0, "steps": 0} for day in recent_dates],
         "totalPrompts": 0,
@@ -363,6 +394,7 @@ def parse_transcripts(
     today_cache_creation_tokens: int = 0
     today_input_tokens: int = 0
     today_output_tokens: int = 0
+    today_token_cost: float = 0.0
     session_subagents: dict[str, dict[str, Any]] = {}
 
     if not projects_dir.exists():
@@ -370,6 +402,7 @@ def parse_transcripts(
             "todayCacheReadTokens": 0,
             "todayCacheCreationTokens": 0,
             "todayCacheHitRate": 0.0,
+            "todayTokenCost": 0.0,
             "sessionSubagents": {}
         }
         return tool_counter, models_stats, [], latest_model, session_step_counts, today_tokens_by_model, extra_empty
@@ -527,6 +560,9 @@ def parse_transcripts(
             today_cache_creation_tokens += file_cache_create
             today_input_tokens += file_in_tokens
             today_output_tokens += file_out_tokens
+            today_token_cost += estimate_claude_token_cost(
+                entry_model, file_in_tokens, file_out_tokens, file_cache_read, file_cache_create
+            )
             if file_is_subagent:
                 session_subagents[conv_id] = {
                     "isSubagent": True,
@@ -642,6 +678,7 @@ def parse_transcripts(
         "todayInputTokens": today_input_tokens,
         "todayOutputTokens": today_output_tokens,
         "todayCacheHitRate": today_cache_hit_rate,
+        "todayTokenCost": round(today_token_cost, 4),
         "sessionSubagents": session_subagents
     }
 
@@ -1678,6 +1715,7 @@ def scan(base_dir: Path, force: bool = False, alert_threshold: int | None = None
         "todaySessions": today_db_sessions or (1 if has_active_session else 0),
         "todaySteps": today_db_steps,
         "todayTotalTokens": today_total_tokens,
+        "todayTokenCost": round(extra_stats.get("todayTokenCost", 0.0), 2) or (round(estimate_claude_token_cost(clean_latest_model, int(today_total_tokens * 0.8), int(today_total_tokens * 0.2)), 2) if today_total_tokens > 0 else 0.0),
         "todayTokensByModel": today_tokens_by_model_clean,
         "todayCacheReadTokens": extra_stats.get("todayCacheReadTokens", 0),
         "todayCacheCreationTokens": extra_stats.get("todayCacheCreationTokens", 0),

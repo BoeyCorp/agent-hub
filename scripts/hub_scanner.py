@@ -305,6 +305,12 @@ def scan_hub(
     today_steps = int(claude_data.get("todaySteps", 0)) + int(antigravity_data.get("todaySteps", 0)) + int(codex_data.get("todaySteps", 0))
     today_tokens = int(claude_data.get("todayTotalTokens", 0)) + int(antigravity_data.get("todayTotalTokens", 0)) + int(codex_data.get("todayTotalTokens", 0))
     today_sessions = int(claude_data.get("todaySessions", 0)) + int(antigravity_data.get("todaySessions", 0)) + int(codex_data.get("todaySessions", 0))
+    today_token_cost = round(
+        float(claude_data.get("todayTokenCost", 0.0))
+        + float(antigravity_data.get("todayTokenCost", 0.0))
+        + float(codex_data.get("todayTokenCost", 0.0)),
+        2
+    )
 
     # Combined prompt cache metrics
     c_cache_read = int(claude_data.get("todayCacheReadTokens", 0))
@@ -367,6 +373,12 @@ def scan_hub(
         "todaySteps": today_steps,
         "todaySessions": today_sessions,
         "todayTotalTokens": today_tokens,
+        "todayTokenCost": today_token_cost,
+        "todayTokenCostByAgent": {
+            "claude": float(claude_data.get("todayTokenCost", 0.0)),
+            "antigravity": float(antigravity_data.get("todayTokenCost", 0.0)),
+            "codex": float(codex_data.get("todayTokenCost", 0.0))
+        },
         "todayCacheReadTokens": today_cache_read,
         "todayCacheCreationTokens": today_cache_create,
         "todayInputTokens": today_input,

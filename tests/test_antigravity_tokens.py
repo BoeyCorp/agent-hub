@@ -33,6 +33,8 @@ class TestAntigravityTokens(unittest.TestCase):
             total_tok = sum(tokens_by_model.values())
             self.assertEqual(total_tok, 5000)
             self.assertEqual(extra_stats.get("todayCacheReadTokens"), 400)
+            self.assertIn("todayTokenCost", extra_stats)
+            self.assertGreater(extra_stats.get("todayTokenCost"), 0)
 
 
 if __name__ == "__main__":

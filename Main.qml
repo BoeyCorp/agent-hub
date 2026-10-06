@@ -50,6 +50,15 @@ Item {
         return String(n)
     }
 
+    function formatCost(val) {
+        if (val === undefined || val === null || isNaN(val)) return "$0.00"
+        var n = Number(val)
+        if (n <= 0) return "$0.00"
+        if (n < 0.01) return "<$0.01"
+        if (n >= 1000) return "$" + (n / 1000).toFixed(1) + "k"
+        return "$" + n.toFixed(2)
+    }
+
     function formatDateShort(dateStr) {
         if (!dateStr) return ""
         var parts = dateStr.split("-")

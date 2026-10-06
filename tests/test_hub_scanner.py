@@ -58,6 +58,8 @@ class TestHubScanner(unittest.TestCase):
         self.assertIn("todayPrompts", res)
         self.assertIn("todaySteps", res)
         self.assertIn("todayTotalTokens", res)
+        self.assertIn("todayTokenCost", res)
+        self.assertIn("todayTokenCostByAgent", res)
         self.assertIn("todayCacheReadTokens", res)
         self.assertIn("todayCacheHitRate", res)
         self.assertIn("activeSessions", res)

@@ -107,6 +107,41 @@ def read_configured_model(base_dir: Path | None = None) -> str:
     return "Gemini 3.8 Flash (High)"
 
 
+def estimate_antigravity_token_cost(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read: int = 0
+) -> float:
+    m = (model or "").lower()
+    if "claude" in m:
+        if "opus" in m:
+            rate_in, rate_out, rate_cache = 15.00 / 1e6, 75.00 / 1e6, 1.50 / 1e6
+        elif "haiku" in m:
+            rate_in, rate_out, rate_cache = 0.80 / 1e6, 4.00 / 1e6, 0.08 / 1e6
+        else:
+            rate_in, rate_out, rate_cache = 3.00 / 1e6, 15.00 / 1e6, 0.30 / 1e6
+    elif "gpt" in m or "o1" in m or "o3" in m:
+        if "mini" in m:
+            rate_in, rate_out, rate_cache = 0.15 / 1e6, 0.60 / 1e6, 0.075 / 1e6
+        else:
+            rate_in, rate_out, rate_cache = 2.50 / 1e6, 10.00 / 1e6, 1.25 / 1e6
+    elif "pro" in m:
+        # Gemini Pro (1.5 / 2.0 / 2.5 / 3.0 Pro)
+        rate_in, rate_out, rate_cache = 1.25 / 1e6, 5.00 / 1e6, 0.3125 / 1e6
+    elif "flash-lite" in m or "lite" in m:
+        rate_in, rate_out, rate_cache = 0.0375 / 1e6, 0.15 / 1e6, 0.01 / 1e6
+    else:
+        # Gemini Flash (1.5 / 2.0 / 2.5 / 3.0 / 3.8 Flash) and default
+        rate_in, rate_out, rate_cache = 0.075 / 1e6, 0.30 / 1e6, 0.01875 / 1e6
+
+    return (
+        input_tokens * rate_in
+        + output_tokens * rate_out
+        + cache_read * rate_cache
+    )
+
+
 def empty_result(base_dir: Path | None = None) -> dict[str, Any]:
     recent_dates = recent_date_strings()
     current_model = read_configured_model(base_dir)
@@ -125,6 +160,7 @@ def empty_result(base_dir: Path | None = None) -> dict[str, Any]:
         "todaySessions": 0,
         "todaySteps": 0,
         "todayTotalTokens": 0,
+        "todayTokenCost": 0.0,
         "todayTokensByModel": {},
         "recentDays": [{"date": day, "messageCount": 0, "prompts": 0, "steps": 0} for day in recent_dates],
         "totalPrompts": 0,
@@ -405,13 +441,15 @@ def parse_transcripts(
     today_cache_read_tokens: int = 0
     today_input_tokens: int = 0
     today_output_tokens: int = 0
+    today_token_cost: float = 0.0
 
     if not brain_dir.exists():
         extra_empty = {
             "todayCacheReadTokens": 0,
             "todayCacheHitRate": 0.0,
             "todayInputTokens": 0,
-            "todayOutputTokens": 0
+            "todayOutputTokens": 0,
+            "todayTokenCost": 0.0
         }
         return tool_counter, models_stats, [], latest_model, today_tokens_by_model, extra_empty
 
@@ -556,9 +594,15 @@ def parse_transcripts(
                 }
                 cache_dirty = True
 
-            today_cache_read_tokens += cache_read_by_date.get(today_str, 0)
-            today_input_tokens += input_by_date.get(today_str, 0)
-            today_output_tokens += output_by_date.get(today_str, 0)
+            today_c_read = cache_read_by_date.get(today_str, 0)
+            today_c_in = input_by_date.get(today_str, 0)
+            today_c_out = output_by_date.get(today_str, 0)
+            today_cache_read_tokens += today_c_read
+            today_input_tokens += today_c_in
+            today_output_tokens += today_c_out
+            today_token_cost += estimate_antigravity_token_cost(
+                entry_model, today_c_in, today_c_out, today_c_read
+            )
 
             # Track latest model from most recently modified file
             if not found_latest_model and entry_model:
@@ -684,6 +728,7 @@ def parse_transcripts(
         "todayCacheHitRate": today_cache_hit_rate,
         "todayInputTokens": today_input_tokens,
         "todayOutputTokens": today_output_tokens,
+        "todayTokenCost": round(today_token_cost, 4),
     }
 
     return tool_counter, formatted_models, model_list, latest_model, today_tokens_by_model, extra_stats
@@ -1768,6 +1813,7 @@ def scan(base_dir: Path, force: bool = False, alert_threshold: int | None = None
         "todaySessions": today_db_sessions or (1 if has_active_session else 0),
         "todaySteps": today_db_steps,
         "todayTotalTokens": today_total_tokens,
+        "todayTokenCost": round(extra_stats.get("todayTokenCost", 0.0), 2) or (round(estimate_antigravity_token_cost(clean_latest_model, int(today_total_tokens * 0.8), int(today_total_tokens * 0.2)), 2) if today_total_tokens > 0 else 0.0),
         "todayTokensByModel": today_tokens_by_model_clean,
         "todayCacheReadTokens": extra_stats.get("todayCacheReadTokens", 0),
         "todayInputTokens": extra_stats.get("todayInputTokens", 0),

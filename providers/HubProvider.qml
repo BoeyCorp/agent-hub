@@ -21,10 +21,12 @@ Item {
     property int todaySessions: 0
     property int todaySteps: 0
     property int todayTotalTokens: 0
+    property double todayTokenCost: 0.0
     property int todayCacheReadTokens: 0
     property int todayCacheCreationTokens: 0
     property double todayCacheHitRate: 0.0
     property var todayTokensByAgent: ({})
+    property var todayTokenCostByAgent: ({})
 
     property var recentDays: []
     property int totalPrompts: 0
@@ -181,10 +183,12 @@ Item {
             root.todaySessions = Math.max(0, Number(data.todaySessions || 0))
             root.todaySteps = Math.max(0, Number(data.todaySteps || 0))
             root.todayTotalTokens = Math.max(0, Number(data.todayTotalTokens || 0))
+            root.todayTokenCost = Math.max(0.0, Number(data.todayTokenCost || 0.0))
             root.todayCacheReadTokens = Math.max(0, Number(data.todayCacheReadTokens || 0))
             root.todayCacheCreationTokens = Math.max(0, Number(data.todayCacheCreationTokens || 0))
             root.todayCacheHitRate = Number(data.todayCacheHitRate || 0)
             root.todayTokensByAgent = data.todayTokensByAgent || ({})
+            root.todayTokenCostByAgent = data.todayTokenCostByAgent || ({})
 
             root.recentDays = data.recentDays || []
             root.totalPrompts = Math.max(0, Number(data.totalPrompts || 0))

@@ -16,6 +16,8 @@ class TestCodexScanner(unittest.TestCase):
         self.assertIn("activeSessions", res)
         self.assertIn("recentSessions", res)
         self.assertIn("quotaGroups", res)
+        self.assertIn("todayTokenCost", res)
+        self.assertEqual(res["todayTokenCost"], 0.0)
 
     def test_clean_model_display_name(self):
         self.assertEqual(codex_scanner.clean_model_display_name("gpt-6-luna"), "GPT-6 Luna")
