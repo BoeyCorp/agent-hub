@@ -24,6 +24,12 @@
   - 🟢 **Green (Pulsing)**: Any agent is actively executing or thinking (`Working`).
   - 🔵 **Blue**: Any session is open and waiting for user input (`Waiting`).
   - ⚪ **Transparent**: All agents are idle.
+- **Per-Agent Multi-Dot Status Cluster**: Color-coded micro dots next to the bar icon providing instant visual feedback on which specific agents are active or running:
+  - 🟠 **Orange (`#D97757`)**: Claude Code
+  - 🔵 **Cyan (`#38BDF8`)**: Google Antigravity
+  - 🟢 **Emerald (`#10A37F`)**: OpenAI Codex
+  - **Pulsing Neon Glow**: Actively working/thinking agents pulse with animated halo glows.
+  - **Direct Tab Navigation**: Clicking any agent dot in the status bar opens the cockpit directly to that agent's dedicated deep-dive tab.
 - **Configurable Dynamic Badge Modes**:
   - `active` (Default): Total concurrent background sessions running across all agents (auto-hides when 0).
   - `prompts`: Total prompts executed today across all agents.
@@ -124,6 +130,8 @@ Settings can be adjusted directly in the widget's in-popup settings view (right-
 |---|---|---|---|
 | `refreshIntervalSec` | integer (10–1800) | `60` | Telemetry refresh rate in seconds (scales to 10s when active) |
 | `badgeMode` | enum | `"active"` | Bar badge mode (`active`, `prompts`, `tokens`, `quota`, `off`) |
+| `enableMultiDot` | boolean | `true` | Show per-agent color-coded status dots in the status bar |
+| `multiDotMode` | enum | `"active"` | Multi-dot display mode (`active` = active agents only, `all` = all slots) |
 | `enableClaude` | boolean | `true` | Enable Claude Code agent integration |
 | `enableAntigravity` | boolean | `true` | Enable Google Antigravity agent integration |
 | `enableCodex` | boolean | `true` | Enable OpenAI Codex agent integration |

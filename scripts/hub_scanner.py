@@ -272,6 +272,37 @@ def scan_hub(
     )
     active_sessions = c_active_sessions + a_active_sessions + x_active_sessions
 
+    # Per-agent activity states for multi-dot status indicator
+    agent_states = {
+        "claude": {
+            "active": claude_active,
+            "working": claude_working,
+            "waiting": claude_active and not claude_working,
+            "status": claude_data.get("activeStatus", "Idle") if claude_active else "Idle",
+            "count": len(c_active_sessions),
+            "color": "#D97757",
+            "name": "Claude Code",
+        },
+        "antigravity": {
+            "active": agy_active,
+            "working": agy_working,
+            "waiting": agy_active and not agy_working,
+            "status": antigravity_data.get("activeStatus", "Idle") if agy_active else "Idle",
+            "count": len(a_active_sessions),
+            "color": "#38BDF8",
+            "name": "Google Antigravity",
+        },
+        "codex": {
+            "active": codex_active,
+            "working": codex_working,
+            "waiting": codex_active and not codex_working,
+            "status": codex_data.get("activeStatus", "Idle") if codex_active else "Idle",
+            "count": len(x_active_sessions),
+            "color": "#10A37F",
+            "name": "OpenAI Codex",
+        },
+    }
+
     # Annotate and merge recent sessions
     c_recent_sessions = annotate_sessions(
         claude_data.get("recentSessions", []),
@@ -417,6 +448,7 @@ def scan_hub(
             "antigravity": len(a_active_sessions),
             "codex": len(x_active_sessions)
         },
+        "agentStates": agent_states,
         "totalPrompts": total_prompts,
         "totalSteps": total_steps,
         "totalSessions": total_sessions,

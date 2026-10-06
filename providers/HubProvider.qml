@@ -38,6 +38,7 @@ Item {
     property var toolUsage: ({})
     property var quotaGroups: []
     property var activeAgentCounts: ({ "claude": 0, "antigravity": 0, "codex": 0 })
+    property var agentStates: ({})
 
     // Dedicated Sub-Provider Data
     property var claudeData: ({})
@@ -200,6 +201,7 @@ Item {
             root.toolUsage = data.toolUsage || ({})
             root.quotaGroups = data.quotaGroups || []
             root.activeAgentCounts = data.activeAgentCounts || ({ "claude": 0, "antigravity": 0, "codex": 0 })
+            root.agentStates = data.agentStates || ({})
 
             var prov = data.providers || ({})
             root.claudeData = prov.claude || ({})

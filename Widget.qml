@@ -286,6 +286,32 @@ BarWidget {
     usageMain.refreshAll(true)
   }
 
+  function setting(name, fallback) {
+    var value = root.settings ? root.settings[name] : undefined
+    return value === undefined || value === null ? fallback : value
+  }
+
+  function getAgentState(agentId) {
+    if (provider && provider.agentStates && provider.agentStates[agentId]) {
+      return provider.agentStates[agentId]
+    }
+    var provData = (agentId === "claude" ? (provider ? provider.claudeData : null)
+                  : (agentId === "antigravity" ? (provider ? provider.antigravityData : null)
+                  : (provider ? provider.codexData : null)))
+    var hasAct = Boolean(provData && provData.hasActiveSession)
+    var isWork = Boolean(provData && provData.activeStatus === "Working")
+    var cnt = (provider && provider.activeAgentCounts) ? (provider.activeAgentCounts[agentId] || 0) : (hasAct ? 1 : 0)
+    return {
+      active: hasAct,
+      working: isWork,
+      waiting: hasAct && !isWork,
+      status: provData ? (provData.activeStatus || "Idle") : "Idle",
+      count: cnt,
+      color: agentId === "claude" ? "#D97757" : (agentId === "antigravity" ? "#38BDF8" : "#10A37F"),
+      name: agentId === "claude" ? "Claude Code" : (agentId === "antigravity" ? "Google Antigravity" : "OpenAI Codex")
+    }
+  }
+
   function draftValue(name, fallback) {
     var value = draftSettings ? draftSettings[name] : undefined
     return value === undefined || value === null ? fallback : value
@@ -407,8 +433,19 @@ BarWidget {
       else if (ageSec < 3600) refText = " • Refreshed " + Math.floor(ageSec / 60) + "m ago"
       else refText = " • Refreshed " + Math.floor(ageSec / 3600) + "h ago"
     }
+
+    var agentLines = []
+    var cSt = root.getAgentState("claude")
+    var aSt = root.getAgentState("antigravity")
+    var xSt = root.getAgentState("codex")
+    if (cSt.active) agentLines.push("Claude: " + cSt.status + " (" + cSt.count + ")")
+    if (aSt.active) agentLines.push("Antigravity: " + aSt.status + " (" + aSt.count + ")")
+    if (xSt.active) agentLines.push("Codex: " + xSt.status + " (" + xSt.count + ")")
+    var agentSummary = agentLines.length > 0 ? ("\n" + agentLines.join(" • ")) : ""
+
     return "Agent Hub" + status + "\n" +
-           (provider.todayPrompts || 0) + " prompts today • " + tokensFmt + " tokens" + refText + "\n" +
+           (provider.todayPrompts || 0) + " prompts today • " + tokensFmt + " tokens" + refText +
+           agentSummary + "\n" +
            "Claude Code, Google Antigravity & OpenAI Codex"
   }
 
@@ -430,6 +467,7 @@ BarWidget {
     function settings(): string { root.openSettings(); return "ok" }
     function openSettings(): string { root.openSettings(); return "ok" }
     function setBadgeMode(mode: string): string { root.updateSetting("badgeMode", mode); return "ok" }
+    function setMultiDot(enabled: bool): string { root.updateSetting("enableMultiDot", enabled); return "ok" }
     function setTab(tabName: string): string {
       if (tabName === "overview" || tabName === "claude" || tabName === "antigravity" || tabName === "codex") {
         root.showUsage()
@@ -446,11 +484,32 @@ BarWidget {
     readonly property bool tooltipHovered: mouseArea.containsMouse
     readonly property string badgeTextValue: root.getBadgeText()
     readonly property bool hasBadge: badgeTextValue.length > 0
+    readonly property bool multiDotEnabled: root.setting("enableMultiDot", true)
+    readonly property string multiDotMode: root.setting("multiDotMode", "active") // "active" | "all"
 
-    width: hasBadge ? (14 + badgeText.implicitWidth + 10) : root.barSize
+    readonly property var agentList: [
+      { id: "claude", name: "Claude Code", color: "#D97757", enabled: root.setting("enableClaude", true) },
+      { id: "antigravity", name: "Google Antigravity", color: "#38BDF8", enabled: root.setting("enableAntigravity", true) },
+      { id: "codex", name: "OpenAI Codex", color: "#10A37F", enabled: root.setting("enableCodex", true) }
+    ]
+
+    readonly property bool hasDots: {
+      if (!multiDotEnabled) return false
+      for (var i = 0; i < agentList.length; i++) {
+        var ag = agentList[i]
+        if (!ag.enabled) continue
+        if (multiDotMode === "all") return true
+        var st = root.getAgentState(ag.id)
+        if (st && st.active) return true
+      }
+      return false
+    }
+
+    width: Math.max(root.barSize, chipLayout.implicitWidth + 10)
     height: root.barSize
 
     RowLayout {
+      id: chipLayout
       anchors.centerIn: parent
       spacing: 4
 
@@ -479,7 +538,7 @@ BarWidget {
           colorizationColor: root.foreground
         }
 
-        // Active pulse glow
+        // Active pulse glow (legacy fallback when multi-dot is disabled)
         Rectangle {
           width: 4
           height: 4
@@ -488,13 +547,97 @@ BarWidget {
           anchors.bottom: parent.bottom
           anchors.margins: -1
           color: root.isWorking ? "#10B981" : (root.isWaiting ? "#38BDF8" : "transparent")
-          visible: root.hasActiveSession
+          visible: !chip.multiDotEnabled && root.hasActiveSession
 
           SequentialAnimation on opacity {
-            running: root.isWorking
+            running: !chip.multiDotEnabled && root.isWorking
             loops: Animation.Infinite
             NumberAnimation { from: 0.3; to: 1.0; duration: 600; easing.type: Easing.InOutQuad }
             NumberAnimation { from: 1.0; to: 0.3; duration: 600; easing.type: Easing.InOutQuad }
+          }
+        }
+      }
+
+      // Per-Agent Multi-Dot Indicator Cluster
+      RowLayout {
+        id: multiDotRow
+        visible: chip.multiDotEnabled && chip.hasDots
+        spacing: 2
+        Layout.alignment: Qt.AlignVCenter
+
+        Repeater {
+          model: chip.agentList
+          delegate: Item {
+            id: dotDelegate
+            required property var modelData
+            readonly property var st: root.getAgentState(modelData.id)
+            readonly property bool dotVisible: modelData.enabled && (chip.multiDotMode === "all" || (st && st.active))
+
+            visible: dotVisible
+            implicitWidth: dotVisible ? 8 : 0
+            implicitHeight: 14
+            width: implicitWidth
+            height: implicitHeight
+            Layout.preferredWidth: implicitWidth
+            Layout.preferredHeight: implicitHeight
+            Layout.alignment: Qt.AlignVCenter
+
+            // Pulsing halo aura behind actively working agent dot
+            Rectangle {
+              anchors.centerIn: parent
+              width: 8
+              height: 8
+              radius: 4
+              color: modelData.color
+              opacity: (st && st.working) ? 0.35 : 0.0
+              visible: Boolean(st && st.working)
+
+              SequentialAnimation on opacity {
+                running: Boolean(st && st.working)
+                loops: Animation.Infinite
+                NumberAnimation { from: 0.15; to: 0.45; duration: 600; easing.type: Easing.InOutQuad }
+                NumberAnimation { from: 0.45; to: 0.15; duration: 600; easing.type: Easing.InOutQuad }
+              }
+            }
+
+            // Core status dot
+            Rectangle {
+              id: dotCore
+              anchors.centerIn: parent
+              width: 5
+              height: 5
+              radius: 2.5
+              color: (st && st.active) ? modelData.color : root.track
+              opacity: (st && st.active) ? 1.0 : 0.35
+
+              SequentialAnimation on opacity {
+                running: Boolean(st && st.working)
+                loops: Animation.Infinite
+                NumberAnimation { from: 0.4; to: 1.0; duration: 600; easing.type: Easing.InOutQuad }
+                NumberAnimation { from: 1.0; to: 0.4; duration: 600; easing.type: Easing.InOutQuad }
+              }
+            }
+
+            MouseArea {
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onEntered: {
+                if (root.bar) {
+                  var tip = modelData.name + ": " + (st ? (st.working ? "Working" : (st.waiting ? "Waiting (" + st.count + " active)" : "Idle")) : "Idle")
+                  root.bar.showTooltip(dotDelegate, tip)
+                }
+              }
+              onExited: {
+                if (root.bar) root.bar.hideTooltip(dotDelegate)
+              }
+              onClicked: function(mouse) {
+                mouse.accepted = true
+                root.showUsage()
+                root.currentTab = modelData.id
+                root.popupOpen = true
+              }
+            }
           }
         }
       }
@@ -2202,6 +2345,69 @@ BarWidget {
             fontFamily: root.fontFamily
             fontSize: 10
             onClicked: if (root.provider) root.provider.checkHooks()
+          }
+        }
+      }
+    }
+
+    // Top Bar Multi-Dot Status Indicator Setting
+    SectionCard {
+      title: "Top Bar Multi-Dot Status Indicator"
+      subtitle: "Color-coded micro dots for Claude, Antigravity, and Codex in the top bar"
+
+      ColumnLayout {
+        Layout.fillWidth: true
+        spacing: 6
+
+        RowLayout {
+          Layout.fillWidth: true
+          Text {
+            textFormat: Text.PlainText
+            text: "Enable Per-Agent Status Dots"
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: 10
+            Layout.fillWidth: true
+          }
+          CheckBox {
+            checked: root.draftValue("enableMultiDot", true)
+            onToggled: root.setDraftValue("enableMultiDot", checked)
+          }
+        }
+
+        ColumnLayout {
+          Layout.fillWidth: true
+          spacing: 4
+          visible: root.draftValue("enableMultiDot", true)
+
+          RowLayout {
+            spacing: 6
+            RadioButton {
+              checked: root.draftValue("multiDotMode", "active") === "active"
+              onToggled: root.setDraftValue("multiDotMode", "active")
+            }
+            Text {
+              textFormat: Text.PlainText
+              text: "Active agents only (Default · auto-hides idle agents)"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: 10
+            }
+          }
+
+          RowLayout {
+            spacing: 6
+            RadioButton {
+              checked: root.draftValue("multiDotMode", "active") === "all"
+              onToggled: root.setDraftValue("multiDotMode", "all")
+            }
+            Text {
+              textFormat: Text.PlainText
+              text: "Always show all slots (dim dot when idle)"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: 10
+            }
           }
         }
       }

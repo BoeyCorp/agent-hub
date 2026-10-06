@@ -70,6 +70,13 @@ class TestHubScanner(unittest.TestCase):
         self.assertIn("antigravity", res["providers"])
         self.assertIn("codex", res["providers"])
         self.assertIn("codexData", res)
+        self.assertIn("agentStates", res)
+        self.assertIn("claude", res["agentStates"])
+        self.assertIn("antigravity", res["agentStates"])
+        self.assertIn("codex", res["agentStates"])
+        self.assertIn("color", res["agentStates"]["claude"])
+        self.assertIn("color", res["agentStates"]["antigravity"])
+        self.assertIn("color", res["agentStates"]["codex"])
 
     def test_focus_script_help(self):
         import subprocess
