@@ -430,6 +430,14 @@ BarWidget {
     function settings(): string { root.openSettings(); return "ok" }
     function openSettings(): string { root.openSettings(); return "ok" }
     function setBadgeMode(mode: string): string { root.updateSetting("badgeMode", mode); return "ok" }
+    function setTab(tabName: string): string {
+      if (tabName === "overview" || tabName === "claude" || tabName === "antigravity" || tabName === "codex") {
+        root.showUsage()
+        root.currentTab = tabName
+        return "ok"
+      }
+      return "invalid tab"
+    }
   }
 
   component UsageChip: Item {
@@ -1012,6 +1020,7 @@ BarWidget {
     default property alias content: body.data
 
     Layout.fillWidth: true
+    Layout.minimumWidth: 0
     color: root.card
     borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05), 1)
     padding: 10
@@ -1105,13 +1114,16 @@ BarWidget {
     property color valColor: root.foreground
 
     Layout.fillWidth: true
-    Layout.preferredWidth: 60
+    Layout.preferredWidth: 1
+    Layout.minimumWidth: 0
     implicitHeight: 46
     radius: 4
     color: root.track
+    clip: true
 
     ColumnLayout {
-      anchors.centerIn: parent
+      anchors.fill: parent
+      anchors.margins: 2
       spacing: 1
 
       Text {
@@ -1121,7 +1133,9 @@ BarWidget {
         font.family: root.fontFamily
         font.pixelSize: 13
         font.bold: true
-        Layout.alignment: Qt.AlignHCenter
+        Layout.fillWidth: true
+        horizontalAlignment: Text.AlignHCenter
+        elide: Text.ElideRight
       }
 
       Text {
@@ -1130,7 +1144,9 @@ BarWidget {
         color: root.dim
         font.family: root.fontFamily
         font.pixelSize: 8
-        Layout.alignment: Qt.AlignHCenter
+        Layout.fillWidth: true
+        horizontalAlignment: Text.AlignHCenter
+        elide: Text.ElideRight
       }
     }
   }
@@ -1437,11 +1453,13 @@ BarWidget {
 
       ColumnLayout {
         Layout.fillWidth: true
+        Layout.minimumWidth: 0
         spacing: 6
 
         RowLayout {
           Layout.fillWidth: true
-          spacing: 6
+          Layout.minimumWidth: 0
+          spacing: 4
 
           StatBlock {
             value: provider ? usageMain.formatNumber(provider.todayPrompts) : "0"
@@ -1465,11 +1483,12 @@ BarWidget {
         // Sub-breakdown row
         RowLayout {
           Layout.fillWidth: true
-          spacing: 8
+          Layout.minimumWidth: 0
+          spacing: 5
 
           Text {
             textFormat: Text.PlainText
-            text: "Claude: " + usageMain.formatNumber(provider ? (provider.todayTokensByAgent ? provider.todayTokensByAgent.claude : 0) : 0) + " tokens"
+            text: "Claude: " + usageMain.formatNumber(provider ? (provider.todayTokensByAgent ? provider.todayTokensByAgent.claude : 0) : 0)
             color: "#D97757"
             font.family: root.fontFamily
             font.pixelSize: 9
@@ -1480,7 +1499,7 @@ BarWidget {
 
           Text {
             textFormat: Text.PlainText
-            text: "Antigravity: " + usageMain.formatNumber(provider ? (provider.todayTokensByAgent ? provider.todayTokensByAgent.antigravity : 0) : 0) + " tokens"
+            text: "Antigravity: " + usageMain.formatNumber(provider ? (provider.todayTokensByAgent ? provider.todayTokensByAgent.antigravity : 0) : 0)
             color: "#38BDF8"
             font.family: root.fontFamily
             font.pixelSize: 9
@@ -1491,14 +1510,14 @@ BarWidget {
 
           Text {
             textFormat: Text.PlainText
-            text: "Codex: " + usageMain.formatNumber(provider ? (provider.todayTokensByAgent ? provider.todayTokensByAgent.codex : 0) : 0) + " tokens"
+            text: "Codex: " + usageMain.formatNumber(provider ? (provider.todayTokensByAgent ? provider.todayTokensByAgent.codex : 0) : 0)
             color: "#10A37F"
             font.family: root.fontFamily
             font.pixelSize: 9
             font.bold: true
           }
 
-          Item { Layout.fillWidth: true }
+          Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
 
           Text {
             textFormat: Text.PlainText
@@ -1506,6 +1525,7 @@ BarWidget {
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: 9
+            elide: Text.ElideRight
           }
         }
 
