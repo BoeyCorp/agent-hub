@@ -104,6 +104,25 @@ class TestHubHooks(unittest.TestCase):
         self.assertFalse(status["antigravityInstalled"])
         self.assertIn("errors", status)
 
+    def test_empty_existing_file_raises_value_error_and_does_not_overwrite(self):
+        self.claude_path.write_text("", encoding="utf-8")
+        self.agy_path.write_text("   \n  ", encoding="utf-8")
+
+        from scripts.hub_hooks import load_json
+        with self.assertRaises(ValueError):
+            load_json(self.claude_path)
+        with self.assertRaises(ValueError):
+            load_json(self.agy_path)
+
+        with self.assertRaises(ValueError):
+            install_claude_hooks(self.claude_path)
+        with self.assertRaises(ValueError):
+            install_antigravity_hooks(self.agy_path)
+
+        # Files must remain untouched (empty/whitespace, NOT overwritten with new config)
+        self.assertEqual(self.claude_path.read_text(encoding="utf-8"), "")
+        self.assertEqual(self.agy_path.read_text(encoding="utf-8"), "   \n  ")
+
     def test_antigravity_hooks_preserves_custom_handlers(self):
         initial = {
             "herdr": {

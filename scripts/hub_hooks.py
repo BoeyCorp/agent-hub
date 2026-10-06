@@ -47,7 +47,7 @@ def load_json(path: Path) -> dict[str, Any]:
         return {}
     text = path.read_text(encoding="utf-8")
     if not text.strip():
-        return {}
+        raise ValueError(f"Corrupted or invalid JSON configuration in {path}: file is empty")
     try:
         data = json.loads(text)
     except Exception as e:

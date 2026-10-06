@@ -239,8 +239,8 @@ def is_claude_process(pid: Any, expected_proc_start: Any = None) -> bool:
     # 2. Start time check against session file procStart
     if expected_proc_start is not None and str(expected_proc_start).strip():
         actual_start = get_proc_starttime(pid_int)
-        if actual_start is not None and actual_start != str(expected_proc_start).strip():
-            # Process start time does not match: PID reuse detected!
+        if actual_start is None or actual_start != str(expected_proc_start).strip():
+            # Process start time unavailable or does not match: PID reuse detected!
             return False
 
     # 3. Executable identity check

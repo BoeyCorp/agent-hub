@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from unittest.mock import patch
+
 from scripts.claude_scanner import is_claude_process, kill_session as claude_kill_session, get_proc_starttime
 from scripts.antigravity_scanner import is_antigravity_process
 from scripts.codex_scanner import is_codex_process
@@ -41,6 +43,12 @@ class TestProcessGuards(unittest.TestCase):
             # Force mismatch
             wrong_start = str(int(actual_start) + 9999)
             self.assertFalse(is_claude_process(my_pid, expected_proc_start=wrong_start))
+
+    def test_proc_start_unavailable_rejected(self):
+        my_pid = os.getpid()
+        with patch("scripts.claude_scanner.get_proc_starttime", return_value=None):
+            # If procStart was expected but cannot be verified from /proc, must reject
+            self.assertFalse(is_claude_process(my_pid, expected_proc_start="12345"))
 
     def test_kill_session_rejects_unrelated_process(self):
         # Create a fake session file pointing to current test process (Python)
