@@ -57,6 +57,36 @@ def annotate_sessions(sessions: list[dict[str, Any]], agent_id: str, agent_name:
     return annotated
 
 
+def group_session_hierarchy(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Group subagent sessions hierarchically directly under their parent sessions."""
+    if not sessions:
+        return []
+
+    by_id = {s["conversationId"]: s for s in sessions if s.get("conversationId")}
+    parent_to_children: dict[str, list[dict[str, Any]]] = {}
+    standalone: list[dict[str, Any]] = []
+
+    for s in sessions:
+        parent_id = s.get("parentConversationId")
+        if s.get("isSubagent") and parent_id and parent_id in by_id:
+            parent_to_children.setdefault(parent_id, []).append(s)
+        else:
+            standalone.append(s)
+
+    result: list[dict[str, Any]] = []
+    for s in standalone:
+        result.append(s)
+        cid = s.get("conversationId")
+        if cid and cid in parent_to_children:
+            for child in parent_to_children[cid]:
+                child_copy = dict(child)
+                child_copy["indent"] = 1
+                child_copy["isSubagent"] = True
+                result.append(child_copy)
+
+    return result
+
+
 def normalize_combined_tools(claude_tools: dict[str, int], antigravity_tools: dict[str, int]) -> dict[str, int]:
     """Combine and normalize tool executions across both Claude Code and Antigravity."""
     norm = {
@@ -237,12 +267,31 @@ def scan_hub(
 
     all_recent = c_recent_sessions + a_recent_sessions
     all_recent.sort(key=session_sort_key, reverse=True)
+    all_recent = group_session_hierarchy(all_recent)
 
     # Combined totals
     today_prompts = int(claude_data.get("todayPrompts", 0)) + int(antigravity_data.get("todayPrompts", 0))
     today_steps = int(claude_data.get("todaySteps", 0)) + int(antigravity_data.get("todaySteps", 0))
     today_tokens = int(claude_data.get("todayTotalTokens", 0)) + int(antigravity_data.get("todayTotalTokens", 0))
     today_sessions = int(claude_data.get("todaySessions", 0)) + int(antigravity_data.get("todaySessions", 0))
+
+    # Combined prompt cache metrics
+    c_cache_read = int(claude_data.get("todayCacheReadTokens", 0))
+    c_cache_create = int(claude_data.get("todayCacheCreationTokens", 0))
+    c_input = int(claude_data.get("todayInputTokens", 0))
+    c_output = int(claude_data.get("todayOutputTokens", 0))
+
+    a_cache_read = int(antigravity_data.get("todayCacheReadTokens", 0))
+    a_input = int(antigravity_data.get("todayInputTokens", 0))
+    a_output = int(antigravity_data.get("todayOutputTokens", 0))
+
+    today_cache_read = c_cache_read + a_cache_read
+    today_cache_create = c_cache_create
+    today_input = c_input + a_input
+    today_output = c_output + a_output
+
+    cache_denom = today_cache_read + today_cache_create + today_input
+    today_cache_hit_rate = round((today_cache_read / cache_denom) * 100.0, 1) if cache_denom > 0 else 0.0
 
     total_prompts = int(claude_data.get("totalPrompts", 0)) + int(antigravity_data.get("totalPrompts", 0))
     total_steps = int(claude_data.get("totalSteps", 0)) + int(antigravity_data.get("totalSteps", 0))
@@ -283,6 +332,11 @@ def scan_hub(
         "todaySteps": today_steps,
         "todaySessions": today_sessions,
         "todayTotalTokens": today_tokens,
+        "todayCacheReadTokens": today_cache_read,
+        "todayCacheCreationTokens": today_cache_create,
+        "todayInputTokens": today_input,
+        "todayOutputTokens": today_output,
+        "todayCacheHitRate": today_cache_hit_rate,
         "todayTokensByAgent": {
             "claude": int(claude_data.get("todayTotalTokens", 0)),
             "antigravity": int(antigravity_data.get("todayTotalTokens", 0))

@@ -33,6 +33,23 @@ class TestHubScanner(unittest.TestCase):
         self.assertEqual(d5["prompts"], 18)
         self.assertEqual(d5["steps"], 90)
 
+    def test_group_session_hierarchy(self):
+        from scripts.hub_scanner import group_session_hierarchy
+        sessions = [
+            {"conversationId": "parent-1", "title": "Main Project", "isSubagent": False, "parentConversationId": ""},
+            {"conversationId": "sub-1", "title": "Sub Task 1", "isSubagent": True, "parentConversationId": "parent-1"},
+            {"conversationId": "parent-2", "title": "Another Project", "isSubagent": False, "parentConversationId": ""},
+            {"conversationId": "sub-2", "title": "Sub Task 2", "isSubagent": True, "parentConversationId": "parent-1"},
+        ]
+        grouped = group_session_hierarchy(sessions)
+        self.assertEqual(len(grouped), 4)
+        self.assertEqual(grouped[0]["conversationId"], "parent-1")
+        self.assertEqual(grouped[1]["conversationId"], "sub-1")
+        self.assertEqual(grouped[1]["indent"], 1)
+        self.assertEqual(grouped[2]["conversationId"], "sub-2")
+        self.assertEqual(grouped[2]["indent"], 1)
+        self.assertEqual(grouped[3]["conversationId"], "parent-2")
+
     def test_scan_hub_schema_contract(self):
         res = scan_hub(enable_claude=True, enable_antigravity=True, force=True)
         self.assertEqual(res.get("schemaVersion"), 1)
@@ -40,6 +57,8 @@ class TestHubScanner(unittest.TestCase):
         self.assertIn("todayPrompts", res)
         self.assertIn("todaySteps", res)
         self.assertIn("todayTotalTokens", res)
+        self.assertIn("todayCacheReadTokens", res)
+        self.assertIn("todayCacheHitRate", res)
         self.assertIn("activeSessions", res)
         self.assertIn("recentSessions", res)
         self.assertIn("quotaGroups", res)
@@ -47,6 +66,14 @@ class TestHubScanner(unittest.TestCase):
         self.assertIn("claude", res["providers"])
         self.assertIn("antigravity", res["providers"])
 
+    def test_focus_script_help(self):
+        import subprocess
+        script = Path(__file__).resolve().parent.parent / "scripts" / "hub_focus_or_resume.py"
+        res = subprocess.run(["python3", str(script), "--help"], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("--cid", res.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
+

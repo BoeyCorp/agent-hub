@@ -118,17 +118,36 @@ BarWidget {
     }
   }
 
-  function resumeSession(agentId, conversationId, workspacePath) {
+  function pathFromUrl(url) {
+    var value = String(url || "")
+    if (value.indexOf("file://") === 0)
+      return decodeURIComponent(value.substring(7))
+    return value
+  }
+
+  readonly property string focusScriptPath: pathFromUrl(Qt.resolvedUrl("scripts/hub_focus_or_resume.py"))
+
+  function resumeSession(agentId, conversationId, workspacePath, title, pid) {
     if (!conversationId) return
-    var cmd = (agentId === "antigravity")
+    var innerCmd = (agentId === "antigravity")
       ? ["agy", "--conversation", conversationId]
       : ["claude", "--resume", conversationId]
 
-    var args = getTerminalArgs(cmd, workspacePath)
+    var termArgs = getTerminalArgs(innerCmd, workspacePath)
+    var cmd = ["python3", root.focusScriptPath, "--cid", conversationId]
+    if (title) cmd = cmd.concat(["--title", title])
+    if (pid) cmd = cmd.concat(["--pid", String(pid)])
+    cmd = cmd.concat(["--"]).concat(termArgs)
+
     try {
-      Quickshell.execDetached(["uwsm-app", "--"].concat(args))
+      Quickshell.execDetached(cmd)
     } catch (e) {
-      Quickshell.execDetached(args)
+      console.warn("resumeSession focus fallback", e)
+      try {
+        Quickshell.execDetached(["uwsm-app", "--"].concat(termArgs))
+      } catch (e2) {
+        Quickshell.execDetached(termArgs)
+      }
     }
     root.close()
   }
@@ -469,6 +488,7 @@ BarWidget {
             var val = parseInt(chip.badgeTextValue)
             if (!isNaN(val) && val <= 15) return root.urgent
             if (!isNaN(val) && val <= 30) return "#F59E0B"
+            return root.accent
           }
           return root.isWorking ? "#10B981" : (root.isWaiting ? "#38BDF8" : root.dim)
         }
@@ -557,7 +577,7 @@ BarWidget {
           var list = root.provider ? (root.provider.recentSessions || []) : []
           if (idx >= 0 && idx < list.length) {
             var s = list[idx]
-            root.resumeSession(s.agentId, s.conversationId, s.workspace)
+            root.resumeSession(s.agentId, s.conversationId, s.workspace, s.preview || s.title, s.pid)
           }
         }
       }
@@ -986,6 +1006,7 @@ BarWidget {
     property string tagLabel: (sessionData && sessionData.agentId === "antigravity") ? "AGY" : ((sessionData && sessionData.agentId === "claude") ? "CLAUDE" : "")
 
     Layout.fillWidth: true
+    Layout.leftMargin: (sessionData && sessionData.indent ? 16 : 0)
     implicitHeight: rowCol.implicitHeight + 8
     radius: 3
     color: sMouse.containsMouse ? root.cardHover : "transparent"
@@ -997,7 +1018,7 @@ BarWidget {
       cursorShape: Qt.PointingHandCursor
       onClicked: {
         if (sItem.sessionData) {
-          root.resumeSession(sItem.sessionData.agentId, sItem.sessionData.conversationId, sItem.sessionData.workspace)
+          root.resumeSession(sItem.sessionData.agentId, sItem.sessionData.conversationId, sItem.sessionData.workspace, sItem.sessionData.preview || sItem.sessionData.title, sItem.sessionData.pid)
         }
       }
     }
@@ -1013,6 +1034,16 @@ BarWidget {
       RowLayout {
         Layout.fillWidth: true
         spacing: 4
+
+        Text {
+          visible: Boolean(sItem.sessionData && sItem.sessionData.isSubagent)
+          textFormat: Text.PlainText
+          text: "└─"
+          color: sItem.tagColor
+          font.family: root.fontFamily
+          font.pixelSize: 10
+          font.bold: true
+        }
 
         Rectangle {
           visible: sItem.tagLabel !== ""
@@ -1044,9 +1075,30 @@ BarWidget {
           Layout.fillWidth: true
         }
 
-        // Active badge & Kill button
+        // Active badge, Subagent badge & Kill button
         RowLayout {
           spacing: 4
+
+          Rectangle {
+            visible: Boolean(sItem.sessionData && sItem.sessionData.isSubagent)
+            color: Qt.rgba(sItem.tagColor.r, sItem.tagColor.g, sItem.tagColor.b, 0.15)
+            border.color: Qt.rgba(sItem.tagColor.r, sItem.tagColor.g, sItem.tagColor.b, 0.3)
+            border.width: 1
+            radius: 2
+            Layout.preferredHeight: 12
+            Layout.preferredWidth: subagentBadgeText.implicitWidth + 6
+
+            Text {
+              id: subagentBadgeText
+              anchors.centerIn: parent
+              textFormat: Text.PlainText
+              text: (sItem.sessionData && sItem.sessionData.agentName && sItem.sessionData.agentName !== "Claude Code" && sItem.sessionData.agentName !== "Antigravity") ? sItem.sessionData.agentName.toUpperCase() : "SUBAGENT"
+              color: sItem.tagColor
+              font.family: root.fontFamily
+              font.pixelSize: 7
+              font.bold: true
+            }
+          }
 
           Rectangle {
             visible: Boolean(sItem.sessionData && sItem.sessionData.isActive)
@@ -1307,6 +1359,59 @@ BarWidget {
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: 9
+          }
+        }
+
+        // Prompt Cache Efficiency Pill
+        Rectangle {
+          visible: Boolean(provider && (provider.todayCacheReadTokens > 0 || provider.todayCacheHitRate > 0))
+          Layout.fillWidth: true
+          Layout.preferredHeight: 22
+          radius: 4
+          color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.08)
+          border.color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.22)
+          border.width: 1
+
+          RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 8
+            anchors.rightMargin: 8
+            spacing: 6
+
+            Text {
+              textFormat: Text.PlainText
+              text: "⚡ Prompt Cache:"
+              color: root.accent
+              font.family: root.fontFamily
+              font.pixelSize: 10
+              font.bold: true
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              text: (provider ? (provider.todayCacheHitRate || 0) : 0) + "% hit rate"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: 10
+              font.bold: true
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              text: "·"
+              color: root.dim
+              font.pixelSize: 9
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              text: "Saved " + usageMain.formatNumber(provider ? (provider.todayCacheReadTokens || 0) : 0) + " cached tokens"
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: 10
+              Layout.fillWidth: true
+              elide: Text.ElideRight
+            }
           }
         }
       }
@@ -1578,22 +1683,80 @@ BarWidget {
       badgeColor: agentColor
       subtitle: agentId === "antigravity" ? "Google Antigravity Agentic Assistant • Gemini & 3rd-Party Models" : "Anthropic Claude Code CLI"
 
-      RowLayout {
+      ColumnLayout {
         Layout.fillWidth: true
         spacing: 6
 
-        StatBlock {
-          value: usageMain.formatNumber(dataPayload.todayPrompts || 0)
-          label: "prompts today"
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: 6
+
+          StatBlock {
+            value: usageMain.formatNumber(dataPayload.todayPrompts || 0)
+            label: "prompts today"
+          }
+          StatBlock {
+            value: usageMain.formatNumber(dataPayload.todaySteps || 0)
+            label: "steps today"
+          }
+          StatBlock {
+            value: usageMain.formatNumber(dataPayload.todayTotalTokens || 0)
+            label: "tokens today"
+            valColor: agentColor
+          }
         }
-        StatBlock {
-          value: usageMain.formatNumber(dataPayload.todaySteps || 0)
-          label: "steps today"
-        }
-        StatBlock {
-          value: usageMain.formatNumber(dataPayload.todayTotalTokens || 0)
-          label: "tokens today"
-          valColor: agentColor
+
+        // Prompt Cache Efficiency Pill
+        Rectangle {
+          visible: Boolean(dataPayload && (dataPayload.todayCacheReadTokens > 0 || dataPayload.todayCacheHitRate > 0))
+          Layout.fillWidth: true
+          Layout.preferredHeight: 22
+          radius: 4
+          color: Qt.rgba(agentColor.r, agentColor.g, agentColor.b, 0.08)
+          border.color: Qt.rgba(agentColor.r, agentColor.g, agentColor.b, 0.22)
+          border.width: 1
+
+          RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 8
+            anchors.rightMargin: 8
+            spacing: 6
+
+            Text {
+              textFormat: Text.PlainText
+              text: "⚡ Prompt Cache:"
+              color: agentColor
+              font.family: root.fontFamily
+              font.pixelSize: 10
+              font.bold: true
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              text: (dataPayload ? (dataPayload.todayCacheHitRate || 0) : 0) + "% hit rate"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: 10
+              font.bold: true
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              text: "·"
+              color: root.dim
+              font.pixelSize: 9
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              text: "Saved " + usageMain.formatNumber(dataPayload ? (dataPayload.todayCacheReadTokens || 0) : 0) + " cached tokens"
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: 10
+              Layout.fillWidth: true
+              elide: Text.ElideRight
+            }
+          }
         }
       }
     }

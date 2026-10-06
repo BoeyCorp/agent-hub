@@ -376,9 +376,18 @@ def parse_transcripts(
     models_stats: dict[str, dict[str, Any]] = {}
     latest_model = default_model
     today_tokens_by_model: dict[str, float] = {}
+    today_cache_read_tokens: int = 0
+    today_input_tokens: int = 0
+    today_output_tokens: int = 0
 
     if not brain_dir.exists():
-        return tool_counter, models_stats, [], latest_model, today_tokens_by_model
+        extra_empty = {
+            "todayCacheReadTokens": 0,
+            "todayCacheHitRate": 0.0,
+            "todayInputTokens": 0,
+            "todayOutputTokens": 0
+        }
+        return tool_counter, models_stats, [], latest_model, today_tokens_by_model, extra_empty
 
     recent_dates_set = set(recent_dates) if recent_dates else set()
 
@@ -417,22 +426,35 @@ def parse_transcripts(
                 cached_entry
                 and cached_entry.get("mtime") == mtime
                 and cached_entry.get("size") == size
+                and "cache_read_by_date" in cached_entry
             ):
                 entry_tools = cached_entry.get("tools", {})
                 entry_model = cached_entry.get("model", default_model)
                 steps_by_date = cached_entry.get("steps_by_date", {})
                 prompts_by_date = cached_entry.get("prompts_by_date", {})
+                tokens_by_date = cached_entry.get("tokens_by_date", {})
+                cache_read_by_date = cached_entry.get("cache_read_by_date", {})
+                input_by_date = cached_entry.get("input_by_date", {})
+                output_by_date = cached_entry.get("output_by_date", {})
                 total_steps = cached_entry.get("total_steps", 0)
                 total_prompts = cached_entry.get("total_prompts", 0)
-                today_tokens = cached_entry.get("today_tokens", 0)
+                total_tokens = cached_entry.get("total_tokens", 0)
+                entry_input_tokens = cached_entry.get("input_tokens", 0)
+                entry_output_tokens = cached_entry.get("output_tokens", 0)
             else:
                 entry_tools = Counter()
                 entry_model = default_model
                 steps_by_date = Counter()
                 prompts_by_date = Counter()
+                tokens_by_date = Counter()
+                cache_read_by_date = Counter()
+                input_by_date = Counter()
+                output_by_date = Counter()
                 total_steps = 0
                 total_prompts = 0
-                today_tokens = 0
+                total_tokens = 0
+                entry_input_tokens = 0
+                entry_output_tokens = 0
 
                 try:
                     with open(p, "r", encoding="utf-8", errors="replace") as f:
@@ -460,13 +482,19 @@ def parse_transcripts(
                             total_steps += 1
                             steps_by_date[step_day] += 1
 
-                            # Token extraction from PLANNER_RESPONSE or steps
+                            # Token extraction from PLANNER_RESPONSE or steps with token metrics
                             tok_in = int(step.get("input_tokens") or 0)
                             tok_out = int(step.get("output_tokens") or 0)
                             tok_cache = int(step.get("cache_read_tokens") or 0)
                             turn_tokens = tok_in + tok_out + tok_cache
-                            if turn_tokens > 0 and step_day == today_str:
-                                today_tokens += turn_tokens
+                            if turn_tokens > 0:
+                                total_tokens += turn_tokens
+                                entry_input_tokens += tok_in
+                                entry_output_tokens += tok_out
+                                tokens_by_date[step_day] += turn_tokens
+                                cache_read_by_date[step_day] += tok_cache
+                                input_by_date[step_day] += tok_in
+                                output_by_date[step_day] += tok_out
 
                             if step.get("type") == "USER_INPUT":
                                 total_prompts += 1
@@ -490,11 +518,21 @@ def parse_transcripts(
                     "tools": dict(entry_tools),
                     "steps_by_date": dict(steps_by_date),
                     "prompts_by_date": dict(prompts_by_date),
+                    "tokens_by_date": dict(tokens_by_date),
+                    "cache_read_by_date": dict(cache_read_by_date),
+                    "input_by_date": dict(input_by_date),
+                    "output_by_date": dict(output_by_date),
                     "total_steps": total_steps,
                     "total_prompts": total_prompts,
-                    "today_tokens": today_tokens
+                    "total_tokens": total_tokens,
+                    "input_tokens": entry_input_tokens,
+                    "output_tokens": entry_output_tokens,
                 }
                 cache_dirty = True
+
+            today_cache_read_tokens += cache_read_by_date.get(today_str, 0)
+            today_input_tokens += input_by_date.get(today_str, 0)
+            today_output_tokens += output_by_date.get(today_str, 0)
 
             # Track latest model from most recently modified file
             if not found_latest_model and entry_model:
@@ -511,10 +549,15 @@ def parse_transcripts(
                     "name": entry_model,
                     "prompts": 0,
                     "steps": 0,
+                    "tokens": 0,
+                    "inputTokens": 0,
+                    "outputTokens": 0,
                     "todayPrompts": 0,
                     "todaySteps": 0,
+                    "todayTokens": 0,
                     "weekPrompts": 0,
                     "weekSteps": 0,
+                    "weekTokens": 0,
                     "sessions": set(),
                     "todaySessions": set(),
                     "weekSessions": set()
@@ -532,14 +575,22 @@ def parse_transcripts(
             week_p = sum(prompts_by_date.get(d, 0) for d in recent_dates_set)
             models_stats[entry_model]["weekPrompts"] += week_p
 
+            models_stats[entry_model]["tokens"] += total_tokens
+            models_stats[entry_model]["inputTokens"] += entry_input_tokens
+            models_stats[entry_model]["outputTokens"] += entry_output_tokens
+            today_tok = tokens_by_date.get(today_str, 0)
+            models_stats[entry_model]["todayTokens"] += today_tok
+            week_tok = sum(tokens_by_date.get(d, 0) for d in recent_dates_set)
+            models_stats[entry_model]["weekTokens"] += week_tok
+
             models_stats[entry_model]["sessions"].add(conv_id)
-            if today_s > 0 or today_p > 0:
+            if today_s > 0 or today_p > 0 or today_tok > 0:
                 models_stats[entry_model]["todaySessions"].add(conv_id)
-            if week_s > 0 or week_p > 0:
+            if week_s > 0 or week_p > 0 or week_tok > 0:
                 models_stats[entry_model]["weekSessions"].add(conv_id)
 
-            if today_tokens:
-                today_tokens_by_model[entry_model] = today_tokens_by_model.get(entry_model, 0) + today_tokens
+            if today_tok > 0:
+                today_tokens_by_model[entry_model] = today_tokens_by_model.get(entry_model, 0) + today_tok
 
     except Exception:
         pass
@@ -581,24 +632,93 @@ def parse_transcripts(
             "name": clean_model_name,
             "prompts": p_count,
             "steps": s_count,
+            "tokens": data.get("tokens", 0),
             "todayPrompts": data.get("todayPrompts", 0),
             "todaySteps": data.get("todaySteps", 0),
-            "todayTokens": int(today_tokens_by_model.get(clean_model_name, today_tokens_by_model.get(m, 0))),
+            "todayTokens": data.get("todayTokens", 0),
             "todaySessions": len(data.get("todaySessions", set())),
             "weekPrompts": data.get("weekPrompts", 0),
             "weekSteps": data.get("weekSteps", 0),
+            "weekTokens": data.get("weekTokens", 0),
             "weekSessions": len(data.get("weekSessions", set())),
             "sessions": len(data["sessions"]),
             "shareFraction": share_frac,
             "sharePercent": share_pct,
             "color": m_color,
-            "inputTokens": 0,
-            "outputTokens": 0
+            "inputTokens": data.get("inputTokens", 0),
+            "outputTokens": data.get("outputTokens", 0),
         }
         formatted_models[clean_model_name] = entry
         model_list.append(entry)
 
-    return tool_counter, formatted_models, model_list, latest_model, today_tokens_by_model
+    denom = today_cache_read_tokens + today_input_tokens
+    today_cache_hit_rate = round((today_cache_read_tokens / denom) * 100.0, 1) if denom > 0 else 0.0
+    extra_stats = {
+        "todayCacheReadTokens": today_cache_read_tokens,
+        "todayCacheHitRate": today_cache_hit_rate,
+        "todayInputTokens": today_input_tokens,
+        "todayOutputTokens": today_output_tokens,
+    }
+
+    return tool_counter, formatted_models, model_list, latest_model, today_tokens_by_model, extra_stats
+
+
+def read_presence_pids(presence_dir: Path) -> dict[str, int]:
+    """Map active conversation IDs to process PIDs via /proc/locks."""
+    ino_to_pid: dict[int, int] = {}
+    try:
+        with open("/proc/locks", "r") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 6 and parts[1] == "FLOCK" and parts[3] == "WRITE":
+                    pid = int(parts[4])
+                    dev_ino = parts[5].split(":")
+                    if len(dev_ino) == 3:
+                        ino_to_pid[int(dev_ino[2])] = pid
+    except Exception:
+        pass
+
+    cid_pids: dict[str, int] = {}
+    if presence_dir.exists():
+        for p in presence_dir.glob("*.lock"):
+            cid = p.stem
+            try:
+                ino = p.stat().st_ino
+                if ino in ino_to_pid:
+                    cid_pids[cid] = ino_to_pid[ino]
+            except Exception:
+                pass
+    return cid_pids
+
+
+def group_session_hierarchy(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Group subagent sessions hierarchically directly under their parent sessions."""
+    if not sessions:
+        return []
+
+    by_id = {s["conversationId"]: s for s in sessions if s.get("conversationId")}
+    parent_to_children: dict[str, list[dict[str, Any]]] = {}
+    standalone: list[dict[str, Any]] = []
+
+    for s in sessions:
+        parent_id = s.get("parentConversationId")
+        if s.get("isSubagent") and parent_id and parent_id in by_id:
+            parent_to_children.setdefault(parent_id, []).append(s)
+        else:
+            standalone.append(s)
+
+    result: list[dict[str, Any]] = []
+    for s in standalone:
+        result.append(s)
+        cid = s.get("conversationId")
+        if cid and cid in parent_to_children:
+            for child in parent_to_children[cid]:
+                child_copy = dict(child)
+                child_copy["indent"] = 1
+                child_copy["isSubagent"] = True
+                result.append(child_copy)
+
+    return result
 
 
 def format_hours_duration(hours: float) -> str:
@@ -1212,7 +1332,21 @@ def check_and_send_quota_notifications(
             if not low_buckets:
                 # Quota is healthy (above threshold)
                 if was_low:
-                    # Quota replenished! Reset state so future drops trigger an alert
+                    # Quota replenished! Notify the user and reset state so future drops trigger an alert
+                    headline = f"Antigravity Quota Replenished ({g_name})"
+                    details = f"{g_name} limits have reset and are ready to use."
+                    cmd = [
+                        "omarchy-notification-send",
+                        "--app-name", "antigravity-usage",
+                        "-u", "normal",
+                        "-g", "󰊚",
+                        headline,
+                        details
+                    ]
+                    try:
+                        subprocess.run(cmd, capture_output=True, timeout=4)
+                    except Exception:
+                        pass
                     group_state["alert_active"] = False
                     group_state["last_notified_pct"] = 100
                     state_data[g_name] = group_state
@@ -1308,12 +1442,13 @@ def scan(base_dir: Path, force: bool = False, alert_threshold: int | None = None
     prune_stale_locks(presence_dir)
     prune_cli_logs(base_dir)
     active_lock_ids = parse_presence(presence_dir)
+    presence_pids = read_presence_pids(presence_dir)
 
     # 2. Parse History JSONL
     daily_prompts, total_prompts_hist, recent_prompts, ws_counter = parse_history_file(history_path, recent_dates)
 
     # 3. Parse Transcripts for Tool Calls, Models & Model List (cached & incremental)
-    tool_counter, model_usage_dict, model_list, latest_model, today_tokens_by_model = parse_transcripts(
+    tool_counter, model_usage_dict, model_list, latest_model, today_tokens_by_model, extra_stats = parse_transcripts(
         brain_dir, today_str, recent_dates, default_model=configured_model, base_dir=base_dir
     )
 
@@ -1400,13 +1535,18 @@ def scan(base_dir: Path, force: bool = False, alert_threshold: int | None = None
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT conversation_id, title, preview, step_count, last_modified_time,
-                           workspace_uris, agent_name
+                           workspace_uris, agent_name, parent_conversation_id, nesting_depth
                     FROM conversation_summaries
                 """)
                 for row in cursor:
                     c_id = sanitize_plain_text(row["conversation_id"], 100)
                     if not c_id:
                         continue
+                    row_keys = row.keys()
+                    parent_cid = sanitize_plain_text(row["parent_conversation_id"] or "", 100) if "parent_conversation_id" in row_keys else ""
+                    nesting = int(row["nesting_depth"] or 0) if "nesting_depth" in row_keys else 0
+                    is_sub = bool(parent_cid or nesting > 0)
+
                     if c_id not in conv_map:
                         conv_map[c_id] = {
                             "conversationId": c_id,
@@ -1415,7 +1555,9 @@ def scan(base_dir: Path, force: bool = False, alert_threshold: int | None = None
                             "workspace": sanitize_plain_text(row["workspace_uris"] or "", 300),
                             "timestamp": 0,
                             "stepCount": int(row["step_count"] or 0),
-                            "agentName": sanitize_plain_text(row["agent_name"] or "Antigravity", 80)
+                            "agentName": sanitize_plain_text(row["agent_name"] or "Antigravity", 80),
+                            "isSubagent": is_sub,
+                            "parentConversationId": parent_cid
                         }
                     else:
                         if row["title"]:
@@ -1424,6 +1566,8 @@ def scan(base_dir: Path, force: bool = False, alert_threshold: int | None = None
                             conv_map[c_id]["lastPrompt"] = sanitize_plain_text(row["preview"], 250)
                         if row["agent_name"]:
                             conv_map[c_id]["agentName"] = sanitize_plain_text(row["agent_name"], 80)
+                        conv_map[c_id]["isSubagent"] = is_sub
+                        conv_map[c_id]["parentConversationId"] = parent_cid
         except Exception:
             pass
 
@@ -1477,6 +1621,10 @@ def scan(base_dir: Path, force: bool = False, alert_threshold: int | None = None
         if len(last_p) < 12 and len(first_p) > len(last_p):
             preview = first_p
 
+        is_sub = bool(item.get("isSubagent", False))
+        parent_cid = item.get("parentConversationId", "")
+        pid_val = presence_pids.get(cid)
+
         s_item = {
             "conversationId": cid,
             "title": sanitize_plain_text(title, 150),
@@ -1490,11 +1638,17 @@ def scan(base_dir: Path, force: bool = False, alert_threshold: int | None = None
             "agentName": item.get("agentName", "Antigravity"),
             "notFullyIdle": is_working,
             "killed": False,
-            "isActive": is_active
+            "isActive": is_active,
+            "pid": pid_val,
+            "isSubagent": is_sub,
+            "parentConversationId": parent_cid,
+            "indent": 0
         }
         all_sessions.append(s_item)
         if is_active:
             active_sessions.append(s_item)
+
+    all_sessions = group_session_hierarchy(all_sessions)
 
     has_active_session = len(active_lock_ids) > 0
     if has_active_session:
@@ -1559,6 +1713,8 @@ def scan(base_dir: Path, force: bool = False, alert_threshold: int | None = None
     tools_dict = {sanitize_plain_text(k, 80): v for k, v in tool_counter.most_common(10)}
 
     clean_latest_model = sanitize_plain_text(latest_model, 80)
+    today_total_tokens = int(sum(today_tokens_by_model.values()))
+    today_tokens_by_model_clean = {sanitize_plain_text(k, 80): int(v) for k, v in today_tokens_by_model.items()}
 
     quota_cache_path = base_dir / "cache" / "quota_usage_cache.json"
     quota_updated_at = ""
@@ -1585,8 +1741,12 @@ def scan(base_dir: Path, force: bool = False, alert_threshold: int | None = None
         "todayPrompts": daily_prompts.get(today_str, 0),
         "todaySessions": today_db_sessions or (1 if has_active_session else 0),
         "todaySteps": today_db_steps,
-        "todayTotalTokens": int(sum(today_tokens_by_model.values())),
-        "todayTokensByModel": {sanitize_plain_text(k, 80): int(v) for k, v in today_tokens_by_model.items()},
+        "todayTotalTokens": today_total_tokens,
+        "todayTokensByModel": today_tokens_by_model_clean,
+        "todayCacheReadTokens": extra_stats.get("todayCacheReadTokens", 0),
+        "todayInputTokens": extra_stats.get("todayInputTokens", 0),
+        "todayOutputTokens": extra_stats.get("todayOutputTokens", 0),
+        "todayCacheHitRate": extra_stats.get("todayCacheHitRate", 0.0),
         "recentDays": recent_days_data,
         "totalPrompts": total_prompts_hist,
         "totalSessions": total_db_sessions,

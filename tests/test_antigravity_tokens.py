@@ -25,13 +25,14 @@ class TestAntigravityTokens(unittest.TestCase):
                 for l in lines:
                     f.write(json.dumps(l) + "\n")
 
-            tool_cnt, models, mlist, latest_m, tokens_by_model = parse_transcripts(
+            tool_cnt, models, mlist, latest_m, tokens_by_model, extra_stats = parse_transcripts(
                 brain, today_str=today_str, recent_dates=[today_str], default_model="Gemini 3.8 Flash (High)", base_dir=Path(tmpdir)
             )
 
             # Sum: (1500 + 200 + 300) + (2500 + 400 + 100) = 2000 + 3000 = 5000
             total_tok = sum(tokens_by_model.values())
             self.assertEqual(total_tok, 5000)
+            self.assertEqual(extra_stats.get("todayCacheReadTokens"), 400)
 
 
 if __name__ == "__main__":
