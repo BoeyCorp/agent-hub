@@ -24,7 +24,7 @@ BarWidget {
     }
   }
 
-  readonly property color foreground: (bar && bar.foreground) ? bar.foreground : (Color.foreground || "#D8DEE9")
+  readonly property color foreground: (bar && bar.barForeground) ? bar.barForeground : ((bar && bar.foreground) ? bar.foreground : (Color.foreground || "#D8DEE9"))
   readonly property color background: (Color.popups && Color.popups.background) ? Color.popups.background : "#1E1E2E"
   readonly property color border: (Color.popups && Color.popups.border) ? Color.popups.border : "#313244"
   readonly property color urgent: (bar && bar.urgent) ? bar.urgent : (Color.urgent || "#F38BA8")
@@ -384,7 +384,7 @@ BarWidget {
     return bgLum > 0.5 || fgLum < 0.5
   }
 
-  readonly property url iconSource: Qt.resolvedUrl(isLightTheme ? "assets/agent-hub-light.svg" : "assets/agent-hub.svg")
+  readonly property url iconSource: Qt.resolvedUrl("assets/agent-hub.svg")
 
   function getBadgeText() {
     if (!root.settings || root.settings.showBadge === false) return ""
@@ -527,7 +527,15 @@ BarWidget {
           sourceSize.height: Math.round(13 * (Screen.devicePixelRatio || 1))
           fillMode: Image.PreserveAspectFit
           anchors.centerIn: parent
-          visible: true
+          visible: false
+          layer.enabled: true
+        }
+
+        MultiEffect {
+          anchors.fill: barIconImage
+          source: barIconImage
+          colorization: 1.0
+          colorizationColor: root.foreground
         }
 
         // Active pulse glow (legacy fallback when multi-dot is disabled)
