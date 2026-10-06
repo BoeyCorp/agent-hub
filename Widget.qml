@@ -1637,7 +1637,7 @@ BarWidget {
 
     // --- GOOGLE ANTIGRAVITY (AGY) DEDICATED SECTION ---
     SectionCard {
-      title: "Google Antigravity (AGY)"
+      title: "Google Antigravity"
       titleColor: "#38BDF8"
       icon: "assets/antigravity.svg"
       badgeText: (provider && provider.antigravityData && provider.antigravityData.currentModel) ? provider.antigravityData.currentModel : "Gemini"
