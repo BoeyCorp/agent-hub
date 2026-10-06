@@ -29,11 +29,23 @@ BarWidget {
   readonly property color border: (Color.popups && Color.popups.border) ? Color.popups.border : "#313244"
   readonly property color urgent: (bar && bar.urgent) ? bar.urgent : (Color.urgent || "#F38BA8")
   readonly property color accent: (bar && bar.accent) ? bar.accent : (Color.accent || "#89B4FA")
-  readonly property color dim: Qt.darker(foreground, 1.45)
-  readonly property color card: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.055)
-  readonly property color cardHover: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.085)
-  readonly property color outline: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.18)
-  readonly property color track: Qt.rgba(foreground.r, foreground.g, foreground.b, 0.24)
+
+  readonly property bool isLightTheme: {
+    var bg = (bar && bar.background) ? bar.background : (Color.background || "#1E1E2E")
+    var bgLum = (bg.r * 0.299 + bg.g * 0.587 + bg.b * 0.114)
+    var fgLum = (foreground.r * 0.299 + foreground.g * 0.587 + foreground.b * 0.114)
+    return bgLum > 0.5 || fgLum < 0.5
+  }
+
+  readonly property color dim: isLightTheme
+    ? Qt.rgba(foreground.r * 0.58 + background.r * 0.42,
+              foreground.g * 0.58 + background.g * 0.42,
+              foreground.b * 0.58 + background.b * 0.42, 1.0)
+    : Qt.darker(foreground, 1.45)
+  readonly property color card: Qt.rgba(foreground.r, foreground.g, foreground.b, isLightTheme ? 0.04 : 0.055)
+  readonly property color cardHover: Qt.rgba(foreground.r, foreground.g, foreground.b, isLightTheme ? 0.08 : 0.085)
+  readonly property color outline: Qt.rgba(foreground.r, foreground.g, foreground.b, isLightTheme ? 0.14 : 0.18)
+  readonly property color track: Qt.rgba(foreground.r, foreground.g, foreground.b, isLightTheme ? 0.12 : 0.24)
   readonly property string fontFamily: bar ? bar.fontFamily : "JetBrainsMono Nerd Font"
 
   readonly property var provider: usageMain.provider
@@ -224,9 +236,19 @@ BarWidget {
   }
 
   function agentColor(agentId) {
-    if (agentId === "antigravity") return "#38BDF8"
-    if (agentId === "codex") return "#10A37F"
-    return "#D97757"
+    if (agentId === "antigravity") return isLightTheme ? "#0284C7" : "#38BDF8"
+    if (agentId === "codex") return isLightTheme ? "#059669" : "#10A37F"
+    return isLightTheme ? "#C2410C" : "#D97757"
+  }
+
+  function adaptColorForTheme(c) {
+    if (!c) return root.accent
+    if (!root.isLightTheme) return c
+    var str = String(c).toUpperCase()
+    if (str === "#38BDF8") return "#0284C7"
+    if (str === "#10A37F" || str === "#10B981") return "#059669"
+    if (str === "#D97757" || str === "#CC785C") return "#C2410C"
+    return c
   }
 
   function cloneObject(value, fallback) {
@@ -307,7 +329,7 @@ BarWidget {
       waiting: hasAct && !isWork,
       status: provData ? (provData.activeStatus || "Idle") : "Idle",
       count: cnt,
-      color: agentId === "claude" ? "#D97757" : (agentId === "antigravity" ? "#38BDF8" : "#10A37F"),
+      color: root.agentColor(agentId),
       name: agentId === "claude" ? "Claude Code" : (agentId === "antigravity" ? "Google Antigravity" : "OpenAI Codex")
     }
   }
@@ -378,11 +400,6 @@ BarWidget {
     onTriggered: root.nowMs = Date.now()
   }
 
-  readonly property bool isLightTheme: {
-    var bgLum = (Color.background ? (Color.background.r * 0.299 + Color.background.g * 0.587 + Color.background.b * 0.114) : 0)
-    var fgLum = (foreground.r * 0.299 + foreground.g * 0.587 + foreground.b * 0.114)
-    return bgLum > 0.5 || fgLum < 0.5
-  }
 
   readonly property url iconSource: Qt.resolvedUrl("assets/agent-hub.svg")
 
@@ -488,9 +505,9 @@ BarWidget {
     readonly property string multiDotMode: root.setting("multiDotMode", "active") // "active" | "all"
 
     readonly property var agentList: [
-      { id: "claude", name: "Claude Code", color: "#D97757", enabled: root.setting("enableClaude", true) },
-      { id: "antigravity", name: "Google Antigravity", color: "#38BDF8", enabled: root.setting("enableAntigravity", true) },
-      { id: "codex", name: "OpenAI Codex", color: "#10A37F", enabled: root.setting("enableCodex", true) }
+      { id: "claude", name: "Claude Code", color: root.agentColor("claude"), enabled: root.setting("enableClaude", true) },
+      { id: "antigravity", name: "Google Antigravity", color: root.agentColor("antigravity"), enabled: root.setting("enableAntigravity", true) },
+      { id: "codex", name: "OpenAI Codex", color: root.agentColor("codex"), enabled: root.setting("enableCodex", true) }
     ]
 
     readonly property bool hasDots: {
@@ -546,7 +563,7 @@ BarWidget {
           anchors.right: parent.right
           anchors.bottom: parent.bottom
           anchors.margins: -1
-          color: root.isWorking ? "#10B981" : (root.isWaiting ? "#38BDF8" : "transparent")
+          color: root.isWorking ? (root.isLightTheme ? "#059669" : "#10B981") : (root.isWaiting ? (root.isLightTheme ? "#0284C7" : "#38BDF8") : "transparent")
           visible: !chip.multiDotEnabled && root.hasActiveSession
 
           SequentialAnimation on opacity {
@@ -655,7 +672,7 @@ BarWidget {
             if (!isNaN(val) && val <= 30) return "#F59E0B"
             return root.accent
           }
-          return root.isWorking ? "#10B981" : (root.isWaiting ? "#38BDF8" : root.dim)
+          return root.isWorking ? (root.isLightTheme ? "#059669" : "#10B981") : (root.isWaiting ? (root.isLightTheme ? "#0284C7" : "#38BDF8") : root.dim)
         }
         font.family: root.fontFamily
         font.pixelSize: 9
@@ -878,7 +895,7 @@ BarWidget {
               Layout.fillWidth: true
               agentId: "claude"
               agentName: "Claude Code"
-              agentColor: "#D97757"
+              agentColor: root.agentColor("claude")
               dataPayload: root.provider ? root.provider.claudeData : ({})
             }
 
@@ -888,7 +905,7 @@ BarWidget {
               Layout.fillWidth: true
               agentId: "antigravity"
               agentName: "Antigravity"
-              agentColor: "#38BDF8"
+              agentColor: root.agentColor("antigravity")
               dataPayload: root.provider ? root.provider.antigravityData : ({})
             }
 
@@ -898,7 +915,7 @@ BarWidget {
               Layout.fillWidth: true
               agentId: "codex"
               agentName: "Codex"
-              agentColor: "#10A37F"
+              agentColor: root.agentColor("codex")
               dataPayload: root.provider ? root.provider.codexData : ({})
             }
           }
@@ -924,7 +941,7 @@ BarWidget {
 
     Layout.fillWidth: true
     color: root.card
-    borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05), 1)
+    borderSpec: Border.flat(root.isLightTheme ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05), 1)
     padding: 8
     radius: Style.cornerRadius
     implicitHeight: headerRow.implicitHeight + contentTopInset + contentBottomInset
@@ -1165,7 +1182,7 @@ BarWidget {
     Layout.fillWidth: true
     Layout.minimumWidth: 0
     color: root.card
-    borderSpec: Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05), 1)
+    borderSpec: Border.flat(root.isLightTheme ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05), 1)
     padding: 10
     radius: Style.cornerRadius
     implicitHeight: body.implicitHeight + contentTopInset + contentBottomInset
@@ -1187,14 +1204,32 @@ BarWidget {
         Layout.fillWidth: true
         spacing: 6
 
-        Image {
+        Item {
+          id: sectionIconContainer
           visible: section.icon !== ""
-          source: section.icon !== "" ? Qt.resolvedUrl(section.icon) : ""
-          sourceSize.width: 14
-          sourceSize.height: 14
+          width: 14
+          height: 14
           Layout.preferredWidth: 14
           Layout.preferredHeight: 14
-          fillMode: Image.PreserveAspectFit
+          Layout.alignment: Qt.AlignVCenter
+
+          Image {
+            id: sectionIconImage
+            anchors.fill: parent
+            source: section.icon !== "" ? Qt.resolvedUrl(section.icon) : ""
+            sourceSize.width: Math.round(14 * (Screen.devicePixelRatio || 1))
+            sourceSize.height: Math.round(14 * (Screen.devicePixelRatio || 1))
+            fillMode: Image.PreserveAspectFit
+            visible: false
+            layer.enabled: true
+          }
+
+          MultiEffect {
+            anchors.fill: sectionIconImage
+            source: sectionIconImage
+            colorization: 1.0
+            colorizationColor: section.titleColor ? section.titleColor : root.foreground
+          }
         }
 
         Text {
@@ -1297,7 +1332,7 @@ BarWidget {
   component SessionItem: Rectangle {
     id: sItem
     property var sessionData: null
-    property color tagColor: (sessionData && sessionData.agentColor) ? sessionData.agentColor : (sessionData && sessionData.agentId === "antigravity" ? "#38BDF8" : (sessionData && sessionData.agentId === "codex" ? "#10A37F" : (sessionData && sessionData.agentId === "claude" ? "#D97757" : root.accent)))
+    property color tagColor: (sessionData && sessionData.agentColor) ? root.adaptColorForTheme(sessionData.agentColor) : (sessionData && sessionData.agentId ? root.agentColor(sessionData.agentId) : root.accent)
     property string tagLabel: (sessionData && sessionData.agentId === "antigravity") ? "AGY" : ((sessionData && sessionData.agentId === "codex") ? "CODEX" : ((sessionData && sessionData.agentId === "claude") ? "CLAUDE" : ""))
 
     Layout.fillWidth: true
@@ -1427,7 +1462,7 @@ BarWidget {
 
           Rectangle {
             radius: 2
-            color: (sItem.sessionData && sItem.sessionData.isActive) ? "#10B981" : root.track
+            color: (sItem.sessionData && sItem.sessionData.isActive) ? (root.isLightTheme ? "#059669" : "#10B981") : root.track
             Layout.preferredHeight: 12
             Layout.preferredWidth: sTagText.implicitWidth + 6
 
@@ -1489,7 +1524,7 @@ BarWidget {
           visible: Boolean(modelData.name && modelData.name.length > 0)
           textFormat: Text.PlainText
           text: modelData.name || "Quota Group"
-          color: modelData.color || root.foreground
+          color: root.adaptColorForTheme(modelData.color || root.foreground)
           font.family: root.fontFamily
           font.pixelSize: 9
           font.bold: true
@@ -1549,7 +1584,7 @@ BarWidget {
                 anchors.bottom: parent.bottom
                 width: parent.width * Math.max(0.0, Math.min(1.0, Number(modelData.remainingFraction !== undefined ? modelData.remainingFraction : (Number(modelData.remainingPercent || 0) / 100.0))))
                 radius: 2
-                color: Number(modelData.remainingPercent || 0) <= 15 ? root.urgent : (modelData.color || root.accent)
+                color: Number(modelData.remainingPercent || 0) <= 15 ? root.urgent : root.adaptColorForTheme(modelData.color || root.accent)
               }
             }
 
@@ -1619,7 +1654,7 @@ BarWidget {
           StatBlock {
             value: provider ? String(provider.activeSessions ? provider.activeSessions.length : 0) : "0"
             label: "active sessions"
-            valColor: (provider && provider.activeSessions && provider.activeSessions.length > 0) ? "#10B981" : root.foreground
+            valColor: (provider && provider.activeSessions && provider.activeSessions.length > 0) ? (root.isLightTheme ? "#059669" : "#10B981") : root.foreground
           }
         }
 
@@ -1632,7 +1667,7 @@ BarWidget {
           Text {
             textFormat: Text.PlainText
             text: "Claude: " + usageMain.formatNumber(provider ? (provider.todayTokensByAgent ? provider.todayTokensByAgent.claude : 0) : 0)
-            color: "#D97757"
+            color: root.agentColor("claude")
             font.family: root.fontFamily
             font.pixelSize: 9
             font.bold: true
@@ -1643,7 +1678,7 @@ BarWidget {
           Text {
             textFormat: Text.PlainText
             text: "Antigravity: " + usageMain.formatNumber(provider ? (provider.todayTokensByAgent ? provider.todayTokensByAgent.antigravity : 0) : 0)
-            color: "#38BDF8"
+            color: root.agentColor("antigravity")
             font.family: root.fontFamily
             font.pixelSize: 9
             font.bold: true
@@ -1654,7 +1689,7 @@ BarWidget {
           Text {
             textFormat: Text.PlainText
             text: "Codex: " + usageMain.formatNumber(provider ? (provider.todayTokensByAgent ? provider.todayTokensByAgent.codex : 0) : 0)
-            color: "#10A37F"
+            color: root.agentColor("codex")
             font.family: root.fontFamily
             font.pixelSize: 9
             font.bold: true
@@ -1730,10 +1765,10 @@ BarWidget {
     // --- CLAUDE CODE DEDICATED SECTION ---
     SectionCard {
       title: "Claude Code"
-      titleColor: "#D97757"
+      titleColor: root.agentColor("claude")
       icon: "assets/claude.svg"
       badgeText: (provider && provider.claudeData && provider.claudeData.currentModel) ? provider.claudeData.currentModel : "Claude"
-      badgeColor: "#D97757"
+      badgeColor: root.agentColor("claude")
       subtitle: {
         var c = provider ? provider.claudeData : null
         var activeN = (provider && provider.activeAgentCounts) ? (provider.activeAgentCounts.claude || 0) : 0
@@ -1781,10 +1816,10 @@ BarWidget {
     // --- GOOGLE ANTIGRAVITY (AGY) DEDICATED SECTION ---
     SectionCard {
       title: "Google Antigravity"
-      titleColor: "#38BDF8"
+      titleColor: root.agentColor("antigravity")
       icon: "assets/antigravity.svg"
       badgeText: (provider && provider.antigravityData && provider.antigravityData.currentModel) ? provider.antigravityData.currentModel : "Gemini"
-      badgeColor: "#38BDF8"
+      badgeColor: root.agentColor("antigravity")
       subtitle: {
         var a = provider ? provider.antigravityData : null
         var activeN = (provider && provider.activeAgentCounts) ? (provider.activeAgentCounts.antigravity || 0) : 0
@@ -1832,10 +1867,10 @@ BarWidget {
     // --- OPENAI CODEX DEDICATED SECTION ---
     SectionCard {
       title: "OpenAI Codex"
-      titleColor: "#10A37F"
+      titleColor: root.agentColor("codex")
       icon: "assets/codex.svg"
       badgeText: (provider && provider.codexData && provider.codexData.currentModel) ? provider.codexData.currentModel : "Codex"
-      badgeColor: "#10A37F"
+      badgeColor: root.agentColor("codex")
       subtitle: {
         var x = provider ? provider.codexData : null
         var activeN = (provider && provider.activeAgentCounts) ? (provider.activeAgentCounts.codex || 0) : 0
@@ -2205,7 +2240,7 @@ BarWidget {
                 anchors.bottom: parent.bottom
                 width: parent.width * Math.min(1.0, Math.max(0.0, Number(modelData.shareFraction || 0)))
                 radius: 2
-                color: modelData.color || agentColor
+                color: root.adaptColorForTheme(modelData.color || agentColor)
               }
             }
           }
