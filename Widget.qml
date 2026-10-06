@@ -13,7 +13,7 @@ BarWidget {
 
   property bool popupOpen: false
   property bool settingsMode: false
-  property string currentTab: "overview" // "overview" | "claude" | "antigravity"
+  property string currentTab: "overview" // "overview" | "claude" | "antigravity" | "codex"
   property var draftSettings: ({})
   property string settingsStatusText: ""
   property bool refreshFlash: false
@@ -131,7 +131,9 @@ BarWidget {
     if (!conversationId) return
     var innerCmd = (agentId === "antigravity")
       ? ["agy", "--conversation", conversationId]
-      : ["claude", "--resume", conversationId]
+      : (agentId === "codex")
+        ? ["codex", "resume", conversationId]
+        : ["claude", "--resume", conversationId]
 
     var termArgs = getTerminalArgs(innerCmd, workspacePath)
     var cmd = ["python3", root.focusScriptPath, "--cid", conversationId]
@@ -153,8 +155,8 @@ BarWidget {
   }
 
   function newSession(agentId) {
-    var chosenAgent = agentId || (currentTab === "antigravity" ? "antigravity" : "claude")
-    var cmd = (chosenAgent === "antigravity") ? ["agy"] : ["claude"]
+    var chosenAgent = agentId || (currentTab === "antigravity" ? "antigravity" : (currentTab === "codex" ? "codex" : "claude"))
+    var cmd = (chosenAgent === "antigravity") ? ["agy"] : (chosenAgent === "codex" ? ["codex"] : ["claude"])
     var args = getTerminalArgs(cmd, "")
     try {
       Quickshell.execDetached(["uwsm-app", "--"].concat(args))
@@ -222,7 +224,9 @@ BarWidget {
   }
 
   function agentColor(agentId) {
-    return agentId === "antigravity" ? "#38BDF8" : "#D97757"
+    if (agentId === "antigravity") return "#38BDF8"
+    if (agentId === "codex") return "#10A37F"
+    return "#D97757"
   }
 
   function cloneObject(value, fallback) {
@@ -243,7 +247,8 @@ BarWidget {
       recentSessionsLimit: 6,
       defaultTab: "overview",
       enableClaude: true,
-      enableAntigravity: true
+      enableAntigravity: true,
+      enableCodex: true
     }
   }
 
@@ -404,7 +409,7 @@ BarWidget {
     }
     return "Agent Hub" + status + "\n" +
            (provider.todayPrompts || 0) + " prompts today • " + tokensFmt + " tokens" + refText + "\n" +
-           "Claude Code & Google Antigravity"
+           "Claude Code, Google Antigravity & OpenAI Codex"
   }
 
   width: button.implicitWidth
@@ -581,7 +586,8 @@ BarWidget {
         else if (t === "1") root.currentTab = "overview"
         else if (t === "2") root.currentTab = "claude"
         else if (t === "3") root.currentTab = "antigravity"
-        else if (!root.settingsMode && t >= "4" && t <= "9") {
+        else if (t === "4") root.currentTab = "codex"
+        else if (!root.settingsMode && t >= "5" && t <= "9") {
           var idx = parseInt(t) - 1
           var list = root.provider ? (root.provider.recentSessions || []) : []
           if (idx >= 0 && idx < list.length) {
@@ -644,7 +650,8 @@ BarWidget {
               model: [
                 { id: "overview", label: "Overview", icon: "assets/agent-hub.svg" },
                 { id: "claude", label: "Claude Code", icon: "assets/claude.svg" },
-                { id: "antigravity", label: "Antigravity", icon: "assets/antigravity.svg" }
+                { id: "antigravity", label: "Antigravity", icon: "assets/antigravity.svg" },
+                { id: "codex", label: "Codex", icon: "assets/codex.svg" }
               ]
               delegate: Rectangle {
                 required property var modelData
@@ -732,6 +739,16 @@ BarWidget {
               agentName: "Antigravity"
               agentColor: "#38BDF8"
               dataPayload: root.provider ? root.provider.antigravityData : ({})
+            }
+
+            // --- CODEX TAB ---
+            ProviderDetailContent {
+              visible: !root.settingsMode && root.currentTab === "codex"
+              Layout.fillWidth: true
+              agentId: "codex"
+              agentName: "Codex"
+              agentColor: "#10A37F"
+              dataPayload: root.provider ? root.provider.codexData : ({})
             }
           }
         }
@@ -1121,8 +1138,8 @@ BarWidget {
   component SessionItem: Rectangle {
     id: sItem
     property var sessionData: null
-    property color tagColor: (sessionData && sessionData.agentColor) ? sessionData.agentColor : (sessionData && sessionData.agentId === "antigravity" ? "#38BDF8" : (sessionData && sessionData.agentId === "claude" ? "#D97757" : root.accent))
-    property string tagLabel: (sessionData && sessionData.agentId === "antigravity") ? "AGY" : ((sessionData && sessionData.agentId === "claude") ? "CLAUDE" : "")
+    property color tagColor: (sessionData && sessionData.agentColor) ? sessionData.agentColor : (sessionData && sessionData.agentId === "antigravity" ? "#38BDF8" : (sessionData && sessionData.agentId === "codex" ? "#10A37F" : (sessionData && sessionData.agentId === "claude" ? "#D97757" : root.accent)))
+    property string tagLabel: (sessionData && sessionData.agentId === "antigravity") ? "AGY" : ((sessionData && sessionData.agentId === "codex") ? "CODEX" : ((sessionData && sessionData.agentId === "claude") ? "CLAUDE" : ""))
 
     Layout.fillWidth: true
     Layout.leftMargin: (sessionData && sessionData.indent ? 16 : 0)
@@ -1416,7 +1433,7 @@ BarWidget {
     // Combined Today & Totals Card
     SectionCard {
       title: "Today & Cross-Agent Totals"
-      subtitle: "Combined metrics across Claude Code & Antigravity"
+      subtitle: "Combined metrics across Claude Code, Antigravity & Codex"
 
       ColumnLayout {
         Layout.fillWidth: true
@@ -1452,7 +1469,7 @@ BarWidget {
 
           Text {
             textFormat: Text.PlainText
-            text: "Claude: " + usageMain.formatNumber(provider ? provider.todayTokensByAgent.claude : 0) + " tokens"
+            text: "Claude: " + usageMain.formatNumber(provider ? (provider.todayTokensByAgent ? provider.todayTokensByAgent.claude : 0) : 0) + " tokens"
             color: "#D97757"
             font.family: root.fontFamily
             font.pixelSize: 9
@@ -1463,8 +1480,19 @@ BarWidget {
 
           Text {
             textFormat: Text.PlainText
-            text: "Antigravity: " + usageMain.formatNumber(provider ? provider.todayTokensByAgent.antigravity : 0) + " tokens"
+            text: "Antigravity: " + usageMain.formatNumber(provider ? (provider.todayTokensByAgent ? provider.todayTokensByAgent.antigravity : 0) : 0) + " tokens"
             color: "#38BDF8"
+            font.family: root.fontFamily
+            font.pixelSize: 9
+            font.bold: true
+          }
+
+          Text { textFormat: Text.PlainText; text: "·"; color: root.dim; font.pixelSize: 9 }
+
+          Text {
+            textFormat: Text.PlainText
+            text: "Codex: " + usageMain.formatNumber(provider ? (provider.todayTokensByAgent ? provider.todayTokensByAgent.codex : 0) : 0) + " tokens"
+            color: "#10A37F"
             font.family: root.fontFamily
             font.pixelSize: 9
             font.bold: true
@@ -1638,10 +1666,61 @@ BarWidget {
       }
     }
 
+    // --- OPENAI CODEX DEDICATED SECTION ---
+    SectionCard {
+      title: "OpenAI Codex"
+      titleColor: "#10A37F"
+      icon: "assets/codex.svg"
+      badgeText: (provider && provider.codexData && provider.codexData.currentModel) ? provider.codexData.currentModel : "Codex"
+      badgeColor: "#10A37F"
+      subtitle: {
+        var x = provider ? provider.codexData : null
+        var activeN = (provider && provider.activeAgentCounts) ? (provider.activeAgentCounts.codex || 0) : 0
+        if (activeN > 0) {
+          return "Active (" + activeN + " session" + (activeN > 1 ? "s" : "") + " running) • OpenAI Codex"
+        }
+        return "OpenAI Codex CLI"
+      }
+
+      ColumnLayout {
+        Layout.fillWidth: true
+        spacing: 8
+
+        Text {
+          visible: !((provider && provider.codexData && provider.codexData.quotaGroups && provider.codexData.quotaGroups.length > 0))
+          textFormat: Text.PlainText
+          text: "No active quota limits configured"
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: 9
+        }
+
+        // Codex Quotas
+        ColumnLayout {
+          Layout.fillWidth: true
+          spacing: 4
+          visible: Boolean(provider && provider.codexData && provider.codexData.quotaGroups && provider.codexData.quotaGroups.length > 0)
+
+          Text {
+            textFormat: Text.PlainText
+            text: "Quota Limits & Reset Forecasting"
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: 8
+            font.bold: true
+          }
+
+          QuotaGroupView {
+            quotaGroups: (provider && provider.codexData) ? (provider.codexData.quotaGroups || []) : []
+          }
+        }
+      }
+    }
+
     // --- COMBINED ACTIVE & RECENT SESSIONS ---
     SectionCard {
       title: "Active & Recent Sessions"
-      subtitle: "Combined sessions across all agents · click or press 4-9 to resume"
+      subtitle: "Combined sessions across all agents · click or press 5-9 to resume"
       visible: Boolean(provider && provider.recentSessions && provider.recentSessions.length > 0)
 
       ColumnLayout {
@@ -1797,10 +1876,10 @@ BarWidget {
     SectionCard {
       title: agentName + " Overview"
       titleColor: agentColor
-      icon: agentId === "antigravity" ? "assets/antigravity.svg" : "assets/claude.svg"
+      icon: agentId === "antigravity" ? "assets/antigravity.svg" : (agentId === "codex" ? "assets/codex.svg" : "assets/claude.svg")
       badgeText: dataPayload.currentModel || ""
       badgeColor: agentColor
-      subtitle: agentId === "antigravity" ? "Google Antigravity Agentic Assistant • Gemini & 3rd-Party Models" : "Anthropic Claude Code CLI"
+      subtitle: agentId === "antigravity" ? "Google Antigravity Agentic Assistant • Gemini & 3rd-Party Models" : (agentId === "codex" ? "OpenAI Codex CLI • ChatGPT & OpenAI Models" : "Anthropic Claude Code CLI")
 
       ColumnLayout {
         Layout.fillWidth: true
@@ -1990,7 +2069,7 @@ BarWidget {
             required property var modelData
             sessionData: modelData
             tagColor: agentColor
-            tagLabel: agentId === "antigravity" ? "AGY" : "CLAUDE"
+            tagLabel: agentId === "antigravity" ? "AGY" : (agentId === "codex" ? "CODEX" : "CLAUDE")
           }
         }
       }
@@ -2040,6 +2119,22 @@ BarWidget {
           CheckBox {
             checked: root.draftValue("enableAntigravity", true)
             onToggled: root.setDraftValue("enableAntigravity", checked)
+          }
+        }
+
+        RowLayout {
+          Layout.fillWidth: true
+          Text {
+            textFormat: Text.PlainText
+            text: "OpenAI Codex Integration"
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: 10
+            Layout.fillWidth: true
+          }
+          CheckBox {
+            checked: root.draftValue("enableCodex", true)
+            onToggled: root.setDraftValue("enableCodex", checked)
           }
         }
       }

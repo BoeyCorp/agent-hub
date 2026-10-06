@@ -11,11 +11,12 @@ class TestHubScanner(unittest.TestCase):
     def test_normalize_combined_tools(self):
         c_tools = {"Bash": 10, "Read": 5, "Edit": 3}
         a_tools = {"run_command": 15, "view_file": 8, "replace_file_content": 4}
-        combined = normalize_combined_tools(c_tools, a_tools)
+        x_tools = {"bash": 5, "read_file": 2, "edit_file": 1}
+        combined = normalize_combined_tools(c_tools, a_tools, x_tools)
 
-        self.assertEqual(combined["Terminal / Commands"], 25)
-        self.assertEqual(combined["File Viewing / Reading"], 13)
-        self.assertEqual(combined["File Editing"], 7)
+        self.assertEqual(combined["Terminal / Commands"], 30)
+        self.assertEqual(combined["File Viewing / Reading"], 15)
+        self.assertEqual(combined["File Editing"], 8)
 
     def test_merge_recent_days(self):
         days_a = [
@@ -65,6 +66,8 @@ class TestHubScanner(unittest.TestCase):
         self.assertIn("providers", res)
         self.assertIn("claude", res["providers"])
         self.assertIn("antigravity", res["providers"])
+        self.assertIn("codex", res["providers"])
+        self.assertIn("codexData", res)
 
     def test_focus_script_help(self):
         import subprocess

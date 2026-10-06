@@ -13,7 +13,7 @@
   },
   "barWidget": {
     "displayName": "Agent Hub",
-    "description": "Unified AI agent cockpit monitoring active sessions, tokens, quota burn rates, and prompt metrics across Claude Code and Google Antigravity.",
+    "description": "Unified AI agent cockpit monitoring active sessions, tokens, quota burn rates, and prompt metrics across Claude Code, Google Antigravity, and OpenAI Codex.",
     "category": "AI",
     "allowMultiple": false,
     "defaults": {
@@ -27,7 +27,8 @@
       "recentSessionsLimit": 6,
       "defaultTab": "overview",
       "enableClaude": true,
-      "enableAntigravity": true
+      "enableAntigravity": true,
+      "enableCodex": true
     },
     "schema": [
       {
@@ -92,7 +93,7 @@
         "key": "defaultTab",
         "type": "enum",
         "label": "Default popup tab",
-        "options": ["overview", "claude", "antigravity"],
+        "options": ["overview", "claude", "antigravity", "codex"],
         "defaultValue": "overview"
       },
       {
@@ -105,6 +106,12 @@
         "key": "enableAntigravity",
         "type": "boolean",
         "label": "Enable Google Antigravity integration",
+        "defaultValue": true
+      },
+      {
+        "key": "enableCodex",
+        "type": "boolean",
+        "label": "Enable OpenAI Codex integration",
         "defaultValue": true
       }
     ]

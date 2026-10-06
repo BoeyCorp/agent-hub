@@ -91,7 +91,7 @@ def find_and_focus_window(cid: str, title: str = "", pid: int | None = None) -> 
                     p_num = int(entry.name)
                     with open(f"/proc/{entry.name}/cmdline", "rb") as f:
                         cmdline = f.read().decode("utf-8", errors="ignore")
-                        if cid in cmdline and ("claude" in cmdline or "agy" in cmdline or "antigravity" in cmdline):
+                        if cid in cmdline and ("claude" in cmdline or "agy" in cmdline or "antigravity" in cmdline or "codex" in cmdline):
                             cur = p_num
                             visited = set()
                             while cur and cur > 1 and cur not in visited:

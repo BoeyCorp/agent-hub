@@ -26,8 +26,9 @@ if str(SCRIPTS_DIR) not in sys.path:
 try:
     import claude_scanner
     import antigravity_scanner
+    import codex_scanner
 except ImportError:
-    from scripts import claude_scanner, antigravity_scanner
+    from scripts import claude_scanner, antigravity_scanner, codex_scanner
 
 
 def default_cache_dir() -> Path:
@@ -87,16 +88,17 @@ def group_session_hierarchy(sessions: list[dict[str, Any]]) -> list[dict[str, An
     return result
 
 
-def normalize_combined_tools(claude_tools: dict[str, int], antigravity_tools: dict[str, int]) -> dict[str, int]:
-    """Combine and normalize tool executions across both Claude Code and Antigravity."""
+def normalize_combined_tools(claude_tools: dict[str, int], antigravity_tools: dict[str, int], codex_tools: dict[str, int] | None = None) -> dict[str, int]:
+    """Combine and normalize tool executions across Claude Code, Antigravity, and Codex."""
+    cx = codex_tools or {}
     norm = {
-        "Terminal / Commands": claude_tools.get("Bash", 0) + antigravity_tools.get("run_command", 0),
-        "File Viewing / Reading": claude_tools.get("Read", 0) + antigravity_tools.get("view_file", 0),
-        "File Editing": claude_tools.get("Edit", 0) + antigravity_tools.get("replace_file_content", 0),
-        "File Writing": claude_tools.get("Write", 0) + antigravity_tools.get("write_to_file", 0),
-        "Code & File Search": claude_tools.get("Grep", 0) + claude_tools.get("Glob", 0) + antigravity_tools.get("grep_search", 0) + antigravity_tools.get("find_by_name", 0),
+        "Terminal / Commands": claude_tools.get("Bash", 0) + antigravity_tools.get("run_command", 0) + cx.get("bash", 0) + cx.get("exec_command", 0),
+        "File Viewing / Reading": claude_tools.get("Read", 0) + antigravity_tools.get("view_file", 0) + cx.get("read_file", 0) + cx.get("view_file", 0),
+        "File Editing": claude_tools.get("Edit", 0) + antigravity_tools.get("replace_file_content", 0) + cx.get("edit_file", 0) + cx.get("patch_file", 0),
+        "File Writing": claude_tools.get("Write", 0) + antigravity_tools.get("write_to_file", 0) + cx.get("write_file", 0),
+        "Code & File Search": claude_tools.get("Grep", 0) + claude_tools.get("Glob", 0) + antigravity_tools.get("grep_search", 0) + antigravity_tools.get("find_by_name", 0) + cx.get("file_search", 0) + cx.get("grep", 0),
         "Subagents & Tasks": claude_tools.get("Agent", 0) + claude_tools.get("Task", 0) + antigravity_tools.get("invoke_subagent", 0) + antigravity_tools.get("manage_task", 0),
-        "Web & Online Search": claude_tools.get("WebFetch", 0) + claude_tools.get("WebSearch", 0) + antigravity_tools.get("search_web", 0) + antigravity_tools.get("read_url_content", 0),
+        "Web & Online Search": claude_tools.get("WebFetch", 0) + claude_tools.get("WebSearch", 0) + antigravity_tools.get("search_web", 0) + antigravity_tools.get("read_url_content", 0) + cx.get("web_search", 0),
     }
     # Add any extra specific tools that have notable usage (> 0)
     for k, v in claude_tools.items():
@@ -105,40 +107,34 @@ def normalize_combined_tools(claude_tools: dict[str, int], antigravity_tools: di
     for k, v in antigravity_tools.items():
         if k not in ("run_command", "view_file", "replace_file_content", "write_to_file", "grep_search", "find_by_name", "invoke_subagent", "manage_task", "search_web", "read_url_content"):
             norm[f"Antigravity: {k}"] = v
+    for k, v in cx.items():
+        if k not in ("bash", "exec_command", "read_file", "view_file", "edit_file", "patch_file", "write_file", "file_search", "grep", "web_search"):
+            norm[f"Codex: {k}"] = v
 
     # Sort descending and filter zeroes
     return {k: v for k, v in sorted(norm.items(), key=lambda x: x[1], reverse=True) if v > 0}
 
 
-def merge_recent_days(days_a: list[dict[str, Any]], days_b: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def merge_recent_days(*day_lists: list[dict[str, Any]]) -> list[dict[str, Any]]:
     merged: dict[str, dict[str, Any]] = {}
-    for d in days_a:
-        date = d.get("date", "")
-        if not date:
-            continue
-        merged[date] = {
-            "date": date,
-            "messageCount": int(d.get("messageCount") or d.get("prompts") or 0),
-            "prompts": int(d.get("prompts", 0)),
-            "steps": int(d.get("steps", 0))
-        }
-    for d in days_b:
-        date = d.get("date", "")
-        if not date:
-            continue
-        p = int(d.get("messageCount") or d.get("prompts") or 0)
-        s = int(d.get("steps", 0))
-        if date in merged:
-            merged[date]["messageCount"] += p
-            merged[date]["prompts"] += p
-            merged[date]["steps"] += s
-        else:
-            merged[date] = {
-                "date": date,
-                "messageCount": p,
-                "prompts": p,
-                "steps": s
-            }
+    for d_list in day_lists:
+        for d in (d_list or []):
+            date = d.get("date", "")
+            if not date:
+                continue
+            p = int(d.get("messageCount") or d.get("prompts") or 0)
+            s = int(d.get("steps", 0))
+            if date in merged:
+                merged[date]["messageCount"] += p
+                merged[date]["prompts"] += p
+                merged[date]["steps"] += s
+            else:
+                merged[date] = {
+                    "date": date,
+                    "messageCount": p,
+                    "prompts": p,
+                    "steps": s
+                }
     # Sort by date ascending
     return [merged[k] for k in sorted(merged.keys())]
 
@@ -146,6 +142,7 @@ def merge_recent_days(days_a: list[dict[str, Any]], days_b: list[dict[str, Any]]
 def scan_hub(
     enable_claude: bool = True,
     enable_antigravity: bool = True,
+    enable_codex: bool = True,
     force: bool = False,
     alert_threshold: int | None = None
 ) -> dict[str, Any]:
@@ -166,6 +163,7 @@ def scan_hub(
 
     claude_data: dict[str, Any] = {}
     antigravity_data: dict[str, Any] = {}
+    codex_data: dict[str, Any] = {}
 
     def fetch_claude():
         try:
@@ -183,9 +181,18 @@ def scan_hub(
             empty["usageStatusText"] = f"Error: {e}"
             return empty
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+    def fetch_codex():
+        try:
+            return codex_scanner.scan(codex_scanner.default_base_dir(), force=force)
+        except Exception as e:
+            empty = codex_scanner.empty_result()
+            empty["usageStatusText"] = f"Error: {e}"
+            return empty
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         f_claude = executor.submit(fetch_claude) if enable_claude else None
         f_agy = executor.submit(fetch_antigravity) if enable_antigravity else None
+        f_codex = executor.submit(fetch_codex) if enable_codex else None
 
         if f_claude:
             claude_data = f_claude.result()
@@ -197,14 +204,21 @@ def scan_hub(
         else:
             antigravity_data = antigravity_scanner.empty_result()
 
+        if f_codex:
+            codex_data = f_codex.result()
+        else:
+            codex_data = codex_scanner.empty_result()
+
     # Determine overall activity state
     claude_active = bool(claude_data.get("hasActiveSession", False))
     claude_working = claude_data.get("activeStatus") == "Working"
     agy_active = bool(antigravity_data.get("hasActiveSession", False))
     agy_working = antigravity_data.get("activeStatus") == "Working"
+    codex_active = bool(codex_data.get("hasActiveSession", False))
+    codex_working = codex_data.get("activeStatus") == "Working"
 
-    has_active = claude_active or agy_active
-    if claude_working or agy_working:
+    has_active = claude_active or agy_active or codex_active
+    if claude_working or agy_working or codex_working:
         overall_status = "Working"
     elif has_active:
         overall_status = "Waiting"
@@ -226,7 +240,14 @@ def scan_hub(
         agent_color="#38BDF8",
         agent_icon="assets/antigravity.svg"
     )
-    active_sessions = c_active_sessions + a_active_sessions
+    x_active_sessions = annotate_sessions(
+        codex_data.get("activeSessions", []),
+        agent_id="codex",
+        agent_name="Codex",
+        agent_color="#10A37F",
+        agent_icon="assets/codex.svg"
+    )
+    active_sessions = c_active_sessions + a_active_sessions + x_active_sessions
 
     # Annotate and merge recent sessions
     c_recent_sessions = annotate_sessions(
@@ -242,6 +263,13 @@ def scan_hub(
         agent_name="Antigravity",
         agent_color="#38BDF8",
         agent_icon="assets/antigravity.svg"
+    )
+    x_recent_sessions = annotate_sessions(
+        codex_data.get("recentSessions", []),
+        agent_id="codex",
+        agent_name="Codex",
+        agent_color="#10A37F",
+        agent_icon="assets/codex.svg"
     )
 
     # Sort active first, then by lastModified / timestamp descending
@@ -259,21 +287,24 @@ def scan_hub(
 
     c_recent_sessions.sort(key=session_sort_key, reverse=True)
     a_recent_sessions.sort(key=session_sort_key, reverse=True)
+    x_recent_sessions.sort(key=session_sort_key, reverse=True)
 
     claude_data["activeSessions"] = c_active_sessions
     claude_data["recentSessions"] = c_recent_sessions
     antigravity_data["activeSessions"] = a_active_sessions
     antigravity_data["recentSessions"] = a_recent_sessions
+    codex_data["activeSessions"] = x_active_sessions
+    codex_data["recentSessions"] = x_recent_sessions
 
-    all_recent = c_recent_sessions + a_recent_sessions
+    all_recent = c_recent_sessions + a_recent_sessions + x_recent_sessions
     all_recent.sort(key=session_sort_key, reverse=True)
     all_recent = group_session_hierarchy(all_recent)
 
     # Combined totals
-    today_prompts = int(claude_data.get("todayPrompts", 0)) + int(antigravity_data.get("todayPrompts", 0))
-    today_steps = int(claude_data.get("todaySteps", 0)) + int(antigravity_data.get("todaySteps", 0))
-    today_tokens = int(claude_data.get("todayTotalTokens", 0)) + int(antigravity_data.get("todayTotalTokens", 0))
-    today_sessions = int(claude_data.get("todaySessions", 0)) + int(antigravity_data.get("todaySessions", 0))
+    today_prompts = int(claude_data.get("todayPrompts", 0)) + int(antigravity_data.get("todayPrompts", 0)) + int(codex_data.get("todayPrompts", 0))
+    today_steps = int(claude_data.get("todaySteps", 0)) + int(antigravity_data.get("todaySteps", 0)) + int(codex_data.get("todaySteps", 0))
+    today_tokens = int(claude_data.get("todayTotalTokens", 0)) + int(antigravity_data.get("todayTotalTokens", 0)) + int(codex_data.get("todayTotalTokens", 0))
+    today_sessions = int(claude_data.get("todaySessions", 0)) + int(antigravity_data.get("todaySessions", 0)) + int(codex_data.get("todaySessions", 0))
 
     # Combined prompt cache metrics
     c_cache_read = int(claude_data.get("todayCacheReadTokens", 0))
@@ -285,31 +316,37 @@ def scan_hub(
     a_input = int(antigravity_data.get("todayInputTokens", 0))
     a_output = int(antigravity_data.get("todayOutputTokens", 0))
 
-    today_cache_read = c_cache_read + a_cache_read
+    x_cache_read = int(codex_data.get("todayCacheReadTokens", 0))
+    x_input = int(codex_data.get("todayInputTokens", 0))
+    x_output = int(codex_data.get("todayOutputTokens", 0))
+
+    today_cache_read = c_cache_read + a_cache_read + x_cache_read
     today_cache_create = c_cache_create
-    today_input = c_input + a_input
-    today_output = c_output + a_output
+    today_input = c_input + a_input + x_input
+    today_output = c_output + a_output + x_output
 
     cache_denom = today_cache_read + today_cache_create + today_input
     today_cache_hit_rate = round((today_cache_read / cache_denom) * 100.0, 1) if cache_denom > 0 else 0.0
 
-    total_prompts = int(claude_data.get("totalPrompts", 0)) + int(antigravity_data.get("totalPrompts", 0))
-    total_steps = int(claude_data.get("totalSteps", 0)) + int(antigravity_data.get("totalSteps", 0))
-    total_sessions = int(claude_data.get("totalSessions", 0)) + int(antigravity_data.get("totalSessions", 0))
+    total_prompts = int(claude_data.get("totalPrompts", 0)) + int(antigravity_data.get("totalPrompts", 0)) + int(codex_data.get("totalPrompts", 0))
+    total_steps = int(claude_data.get("totalSteps", 0)) + int(antigravity_data.get("totalSteps", 0)) + int(codex_data.get("totalSteps", 0))
+    total_sessions = int(claude_data.get("totalSessions", 0)) + int(antigravity_data.get("totalSessions", 0)) + int(codex_data.get("totalSessions", 0))
 
     # Quota groups consolidation
-    quota_groups = list(claude_data.get("quotaGroups", [])) + list(antigravity_data.get("quotaGroups", []))
+    quota_groups = list(claude_data.get("quotaGroups", [])) + list(antigravity_data.get("quotaGroups", [])) + list(codex_data.get("quotaGroups", []))
 
     # Normalized tools
     tool_usage = normalize_combined_tools(
         claude_data.get("toolUsage", {}),
-        antigravity_data.get("toolUsage", {})
+        antigravity_data.get("toolUsage", {}),
+        codex_data.get("toolUsage", {})
     )
 
     # Merged 7-day activity
     recent_days = merge_recent_days(
         claude_data.get("recentDays", []),
-        antigravity_data.get("recentDays", [])
+        antigravity_data.get("recentDays", []),
+        codex_data.get("recentDays", [])
     )
 
     now_iso = dt.datetime.now(dt.timezone.utc).isoformat()
@@ -322,7 +359,7 @@ def scan_hub(
         "schemaVersion": 1,
         "id": "agent-hub",
         "name": "Agent Hub",
-        "ready": bool(claude_data.get("ready") or antigravity_data.get("ready")),
+        "ready": bool(claude_data.get("ready") or antigravity_data.get("ready") or codex_data.get("ready")),
         "active": has_active,
         "activeStatus": overall_status,
         "hasActiveSession": has_active,
@@ -337,11 +374,13 @@ def scan_hub(
         "todayCacheHitRate": today_cache_hit_rate,
         "todayTokensByAgent": {
             "claude": int(claude_data.get("todayTotalTokens", 0)),
-            "antigravity": int(antigravity_data.get("todayTotalTokens", 0))
+            "antigravity": int(antigravity_data.get("todayTotalTokens", 0)),
+            "codex": int(codex_data.get("todayTotalTokens", 0))
         },
         "activeAgentCounts": {
             "claude": len(c_active_sessions),
-            "antigravity": len(a_active_sessions)
+            "antigravity": len(a_active_sessions),
+            "codex": len(x_active_sessions)
         },
         "totalPrompts": total_prompts,
         "totalSteps": total_steps,
@@ -353,12 +392,15 @@ def scan_hub(
         "recentDays": recent_days,
         "providers": {
             "claude": claude_data,
-            "antigravity": antigravity_data
+            "antigravity": antigravity_data,
+            "codex": codex_data
         },
+        "codexData": codex_data,
         "updatedAt": now_iso,
         "lastFullRefreshMs": max(
             int(claude_data.get("lastFullRefreshMs") or 0),
             int(antigravity_data.get("lastFullRefreshMs") or 0),
+            int(codex_data.get("lastFullRefreshMs") or 0),
             now_ms
         ),
         "usageStatusText": status_text,
@@ -378,11 +420,13 @@ def scan_hub(
 
 
 def kill_session_by_agent(agent_target: str, session_id: str) -> bool:
-    """Kill session on specified agent ('claude' or 'antigravity')."""
+    """Kill session on specified agent ('claude', 'antigravity', or 'codex')."""
     if agent_target == "claude":
         return claude_scanner.kill_session(session_id, claude_scanner.default_base_dir())
     elif agent_target == "antigravity":
         return antigravity_scanner.kill_session(session_id, antigravity_scanner.default_base_dir())
+    elif agent_target == "codex":
+        return codex_scanner.kill_session(session_id, codex_scanner.default_base_dir())
     return False
 
 
@@ -393,6 +437,10 @@ def main() -> None:
     parser.add_argument("--kill", type=str, default=None, help="Kill session format: '<agent>:<session_id>'")
     parser.add_argument("--claude-only", action="store_true", help="Only scan Claude Code")
     parser.add_argument("--antigravity-only", action="store_true", help="Only scan Antigravity")
+    parser.add_argument("--codex-only", action="store_true", help="Only scan Codex")
+    parser.add_argument("--no-claude", action="store_true", help="Disable Claude Code scan")
+    parser.add_argument("--no-antigravity", action="store_true", help="Disable Antigravity scan")
+    parser.add_argument("--no-codex", action="store_true", help="Disable Codex scan")
     parser.add_argument("--notify-low-quota", type=int, nargs="?", const=15, default=None, help="Run quota alert check")
     args = parser.parse_args()
 
@@ -406,12 +454,27 @@ def main() -> None:
         print(json.dumps({"success": False, "error": "Invalid kill format. Expected '<agent>:<session_id>'"}))
         return
 
-    enable_claude = not args.antigravity_only
-    enable_antigravity = not args.claude_only
+    if args.claude_only:
+        enable_claude = True
+        enable_antigravity = False
+        enable_codex = False
+    elif args.antigravity_only:
+        enable_claude = False
+        enable_antigravity = True
+        enable_codex = False
+    elif args.codex_only:
+        enable_claude = False
+        enable_antigravity = False
+        enable_codex = True
+    else:
+        enable_claude = not args.no_claude
+        enable_antigravity = not args.no_antigravity
+        enable_codex = not args.no_codex
 
     result = scan_hub(
         enable_claude=enable_claude,
         enable_antigravity=enable_antigravity,
+        enable_codex=enable_codex,
         force=args.force,
         alert_threshold=args.notify_low_quota
     )

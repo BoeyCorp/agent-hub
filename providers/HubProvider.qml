@@ -35,11 +35,12 @@ Item {
     property var recentSessions: []
     property var toolUsage: ({})
     property var quotaGroups: []
-    property var activeAgentCounts: ({ "claude": 0, "antigravity": 0 })
+    property var activeAgentCounts: ({ "claude": 0, "antigravity": 0, "codex": 0 })
 
     // Dedicated Sub-Provider Data
     property var claudeData: ({})
     property var antigravityData: ({})
+    property var codexData: ({})
 
     property string updatedAt: ""
     property double lastUpdatedMs: 0
@@ -194,11 +195,12 @@ Item {
             root.recentSessions = data.recentSessions || []
             root.toolUsage = data.toolUsage || ({})
             root.quotaGroups = data.quotaGroups || []
-            root.activeAgentCounts = data.activeAgentCounts || ({ "claude": 0, "antigravity": 0 })
+            root.activeAgentCounts = data.activeAgentCounts || ({ "claude": 0, "antigravity": 0, "codex": 0 })
 
             var prov = data.providers || ({})
             root.claudeData = prov.claude || ({})
             root.antigravityData = prov.antigravity || ({})
+            root.codexData = prov.codex || ({})
 
             root.usageStatusText = data.usageStatusText || ""
             root.authHelpText = data.authHelpText || ""
@@ -227,12 +229,11 @@ Item {
 
         var enableClaude = (root.settings && root.settings.enableClaude !== undefined) ? Boolean(root.settings.enableClaude) : true
         var enableAgy = (root.settings && root.settings.enableAntigravity !== undefined) ? Boolean(root.settings.enableAntigravity) : true
+        var enableCodex = (root.settings && root.settings.enableCodex !== undefined) ? Boolean(root.settings.enableCodex) : true
 
-        if (enableClaude && !enableAgy) {
-            cmd.push("--claude-only")
-        } else if (!enableClaude && enableAgy) {
-            cmd.push("--antigravity-only")
-        }
+        if (!enableClaude) cmd.push("--no-claude")
+        if (!enableAgy) cmd.push("--no-antigravity")
+        if (!enableCodex) cmd.push("--no-codex")
 
         var enableAlerts = (root.settings && root.settings.enableQuotaAlerts !== undefined) ? Boolean(root.settings.enableQuotaAlerts) : true
         if (enableAlerts) {
