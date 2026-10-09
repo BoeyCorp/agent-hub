@@ -12,6 +12,7 @@ BarWidget {
   moduleName: "boeycorp.agent-hub"
 
   property bool popupOpen: false
+  property bool analyticsOpen: false
   property bool settingsMode: false
   property string currentTab: "overview" // "overview" | "claude" | "antigravity" | "codex"
   property var draftSettings: ({})
@@ -22,6 +23,18 @@ BarWidget {
     if (popupOpen) {
       root.nowMs = Date.now()
     }
+  }
+
+  function openAnalytics() {
+    analyticsOpen = true
+  }
+
+  function closeAnalytics() {
+    analyticsOpen = false
+  }
+
+  function toggleAnalytics() {
+    analyticsOpen = !analyticsOpen
   }
 
   readonly property color foreground: (bar && bar.barForeground) ? bar.barForeground : ((bar && bar.foreground) ? bar.foreground : (Color.foreground || "#D8DEE9"))
@@ -483,6 +496,9 @@ BarWidget {
     function refresh(): string { root.triggerRefresh(true); return "ok" }
     function settings(): string { root.openSettings(); return "ok" }
     function openSettings(): string { root.openSettings(); return "ok" }
+    function openAnalytics(): string { root.openAnalytics(); return "ok" }
+    function closeAnalytics(): string { root.closeAnalytics(); return "ok" }
+    function toggleAnalytics(): string { root.toggleAnalytics(); return "ok" }
     function setBadgeMode(mode: string): string { root.updateSetting("badgeMode", mode); return "ok" }
     function setMultiDot(enabled: bool): string { root.updateSetting("enableMultiDot", enabled); return "ok" }
     function setTab(tabName: string): string {
@@ -749,6 +765,7 @@ BarWidget {
       onTextKey: function(t) {
         if (t === "r" || t === "R") root.triggerRefresh(true)
         else if (t === "s" || t === "S") root.settingsMode ? root.saveSettings() : root.openSettings()
+        else if (t === "a" || t === "A" || t === "m" || t === "M") root.toggleAnalytics()
         else if (t === "n" || t === "N") { if (!root.settingsMode) root.newSession() }
         else if (t === "q" || t === "Q") root.close()
         else if (t === "1") root.currentTab = "overview"
@@ -781,6 +798,7 @@ BarWidget {
           onRefreshClicked: root.triggerRefresh(true)
           onSettingsClicked: root.openSettings()
           onNewSessionClicked: root.newSession()
+          onAnalyticsClicked: root.openAnalytics()
         }
 
         // Settings Header
@@ -935,6 +953,7 @@ BarWidget {
     signal refreshClicked()
     signal settingsClicked()
     signal newSessionClicked()
+    signal analyticsClicked()
 
     readonly property double refMs: (root.provider && root.provider.lastFullRefreshMs > 0) ? root.provider.lastFullRefreshMs : (root.provider ? root.provider.lastUpdatedMs : 0)
     readonly property int ageSec: refMs > 0 ? Math.max(0, Math.floor((root.nowMs - refMs) / 1000)) : -1
@@ -1049,6 +1068,31 @@ BarWidget {
 
       RowLayout {
         spacing: 4
+
+        Rectangle {
+          visible: hdr.showActionButtons
+          radius: 3
+          color: chartMouse.containsMouse ? root.cardHover : root.track
+          Layout.preferredHeight: 22
+          Layout.preferredWidth: 22
+
+          Text {
+            anchors.centerIn: parent
+            textFormat: Text.PlainText
+            text: ""
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: 11
+          }
+
+          MouseArea {
+            id: chartMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: hdr.analyticsClicked()
+          }
+        }
 
         Rectangle {
           visible: hdr.showActionButtons
@@ -2505,6 +2549,20 @@ BarWidget {
           font.pixelSize: 10
           onEditingFinished: root.setDraftValue("terminalCommand", text)
         }
+      }
+    }
+  }
+
+  Loader {
+    id: analyticsWindowLoader
+    active: root.analyticsOpen
+    source: Qt.resolvedUrl("windows/AnalyticsWindow.qml")
+    onLoaded: {
+      if (item) {
+        item.visible = Qt.binding(function() { return root.analyticsOpen })
+        item.closed.connect(function() {
+          root.analyticsOpen = false
+        })
       }
     }
   }
