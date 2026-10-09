@@ -25,7 +25,14 @@ BarWidget {
     }
   }
 
+  onAnalyticsOpenChanged: {
+    if (analyticsOpen) {
+      root.close()
+    }
+  }
+
   function openAnalytics() {
+    root.close()
     analyticsOpen = true
   }
 
@@ -34,6 +41,9 @@ BarWidget {
   }
 
   function toggleAnalytics() {
+    if (!analyticsOpen) {
+      root.close()
+    }
     analyticsOpen = !analyticsOpen
   }
 
