@@ -27,6 +27,11 @@ Item {
     return daily[daily.length - 1]
   }
 
+  property int days: 30
+  property string viewMode: "30" // "30" | "60" | "90" | "custom"
+  property string customStart: ""
+  property string customEnd: ""
+
   readonly property string scriptPath: pathFromUrl(Qt.resolvedUrl("../../scripts/monthly_analytics.py"))
 
   function pathFromUrl(url) {
@@ -36,14 +41,37 @@ Item {
     return value
   }
 
+  function setDays(n) {
+    viewMode = String(n)
+    days = n
+    selectedDayIndex = -1
+    refresh(false)
+  }
+
+  function setCustomRange(start, end) {
+    viewMode = "custom"
+    customStart = start
+    customEnd = end
+    selectedDayIndex = -1
+    refresh(false)
+  }
+
   function refresh(force) {
     if (loading) return
     loading = true
     var args = ["python3", scriptPath]
+    if (viewMode === "custom" && customStart) {
+      args.push("--start", customStart)
+      if (customEnd) {
+        args.push("--end", customEnd)
+      }
+    } else {
+      args.push("--days", String(days || 30))
+    }
     if (force === true) {
       args.push("--force")
     }
-    console.log("agent-hub/analytics starting refresh with scriptPath:", scriptPath)
+    console.log("agent-hub/analytics starting refresh with args:", args.join(" "))
     proc.command = args
     proc.running = true
   }

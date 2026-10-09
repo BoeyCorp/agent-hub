@@ -19,6 +19,8 @@ FloatingWindow {
     // Notify host if needed
   }
 
+  property alias provider: provider
+
   // Theme bindings matching Widget.qml
   property color foreground: (Color.popups && Color.popups.foreground) ? Color.popups.foreground : (Color.foreground || "#D8DEE9")
   property color background: (Color.popups && Color.popups.background) ? Color.popups.background : (Color.background || "#1E1E2E")
@@ -45,8 +47,22 @@ FloatingWindow {
   readonly property color antigravityColor: isLightTheme ? "#0284C7" : "#38BDF8"
   readonly property color codexColor: isLightTheme ? "#059669" : "#10A37F"
 
+  property bool showDateRangePicker: false
+  property string inputStartDate: ""
+  property string inputEndDate: ""
+
   AnalyticsProvider {
     id: provider
+  }
+
+  Connections {
+    target: provider
+    function onPayloadChanged() {
+      if (provider.period) {
+        root.inputStartDate = provider.period.start
+        root.inputEndDate = provider.period.end
+      }
+    }
   }
 
   FocusScope {
@@ -56,11 +72,35 @@ FloatingWindow {
 
     Keys.onPressed: function(event) {
       if (event.key === Qt.Key_Escape) {
+        if (root.showDateRangePicker) {
+          root.showDateRangePicker = false
+          event.accepted = true
+          return
+        }
         root.visible = false
         root.closed()
         event.accepted = true
       } else if (event.key === Qt.Key_R || event.key === Qt.Key_F5) {
         provider.refresh(true)
+        event.accepted = true
+      } else if (event.key === Qt.Key_1) {
+        root.showDateRangePicker = false
+        provider.setDays(30)
+        event.accepted = true
+      } else if (event.key === Qt.Key_2) {
+        root.showDateRangePicker = false
+        provider.setDays(60)
+        event.accepted = true
+      } else if (event.key === Qt.Key_3) {
+        root.showDateRangePicker = false
+        provider.setDays(90)
+        event.accepted = true
+      } else if (event.key === Qt.Key_C) {
+        root.showDateRangePicker = !root.showDateRangePicker
+        if (root.showDateRangePicker && provider.period) {
+          if (!root.inputStartDate || provider.viewMode !== "custom") root.inputStartDate = provider.period.start
+          if (!root.inputEndDate || provider.viewMode !== "custom") root.inputEndDate = provider.period.end
+        }
         event.accepted = true
       } else if (event.key === Qt.Key_Left) {
         if (provider.daily && provider.daily.length > 0) {
@@ -124,12 +164,102 @@ FloatingWindow {
             }
           }
 
-          Text {
+            Text {
             textFormat: Text.PlainText
-            text: provider.period ? (provider.period.label + ": " + provider.period.start + " to " + provider.period.end) : "Last 30 Days"
+            text: provider.period ? (provider.period.label + " (" + provider.period.start + " to " + provider.period.end + ") · " + provider.period.daysCount + " days") : "Last 30 Days"
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: 9
+          }
+        }
+
+        // Period Views: 30D | 60D | 90D |  Custom
+        RowLayout {
+          spacing: 4
+          Layout.alignment: Qt.AlignVCenter
+
+          Repeater {
+            model: [
+              { label: "30D", days: 30 },
+              { label: "60D", days: 60 },
+              { label: "90D", days: 90 }
+            ]
+            delegate: Rectangle {
+              required property var modelData
+              required property int index
+              readonly property bool isActive: provider.viewMode === String(modelData.days)
+              radius: 4
+              color: isActive ? root.accent : (pMouse.containsMouse ? root.cardHover : root.track)
+              Layout.preferredHeight: 26
+              Layout.preferredWidth: 42
+
+              Text {
+                anchors.centerIn: parent
+                textFormat: Text.PlainText
+                text: modelData.label
+                color: isActive ? (root.isLightTheme ? "#FFFFFF" : "#0F141C") : root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: 10
+                font.bold: isActive
+              }
+
+              MouseArea {
+                id: pMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  root.showDateRangePicker = false
+                  provider.setDays(modelData.days)
+                }
+              }
+            }
+          }
+
+          // Custom Date Range Toggle Button
+          Rectangle {
+            id: customBtnRec
+            readonly property bool isActive: provider.viewMode === "custom" || root.showDateRangePicker
+            radius: 4
+            color: customBtnRec.isActive ? root.accent : (cMouse.containsMouse ? root.cardHover : root.track)
+            Layout.preferredHeight: 26
+            Layout.preferredWidth: 76
+
+            RowLayout {
+              anchors.centerIn: parent
+              spacing: 4
+
+              Text {
+                textFormat: Text.PlainText
+                text: ""
+                color: customBtnRec.isActive ? (root.isLightTheme ? "#FFFFFF" : "#0F141C") : root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: 10
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                text: "Custom"
+                color: customBtnRec.isActive ? (root.isLightTheme ? "#FFFFFF" : "#0F141C") : root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: 10
+                font.bold: customBtnRec.isActive
+              }
+            }
+
+            MouseArea {
+              id: cMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: {
+                root.showDateRangePicker = !root.showDateRangePicker
+                if (root.showDateRangePicker && provider.period) {
+                  if (!root.inputStartDate || provider.viewMode !== "custom") root.inputStartDate = provider.period.start
+                  if (!root.inputEndDate || provider.viewMode !== "custom") root.inputEndDate = provider.period.end
+                }
+              }
+            }
           }
         }
 
@@ -196,6 +326,270 @@ FloatingWindow {
                 root.visible = false
                 root.closed()
               }
+            }
+          }
+        }
+      }
+
+      // Expandable Custom Date Range Selector Bar
+      Rectangle {
+        visible: root.showDateRangePicker
+        Layout.fillWidth: true
+        Layout.preferredHeight: 44
+        radius: 6
+        color: root.cardHover
+        border.color: root.accent
+        border.width: 1
+
+        RowLayout {
+          anchors.fill: parent
+          anchors.leftMargin: 12
+          anchors.rightMargin: 12
+          spacing: 10
+
+          Text {
+            textFormat: Text.PlainText
+            text: "Date Range:"
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: 10
+            font.bold: true
+          }
+
+          // From Date Box
+          RowLayout {
+            spacing: 4
+            Text {
+              textFormat: Text.PlainText
+              text: "From"
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: 9
+            }
+            Rectangle {
+              radius: 4
+              color: root.background
+              border.color: startInput.activeFocus ? root.accent : root.track
+              border.width: 1
+              Layout.preferredWidth: 104
+              Layout.preferredHeight: 26
+
+              TextInput {
+                id: startInput
+                anchors.fill: parent
+                anchors.leftMargin: 6
+                anchors.rightMargin: 6
+                verticalAlignment: TextInput.AlignVCenter
+                text: root.inputStartDate
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: 10
+                selectByMouse: true
+                onTextChanged: root.inputStartDate = text
+              }
+            }
+          }
+
+          // To Date Box
+          RowLayout {
+            spacing: 4
+            Text {
+              textFormat: Text.PlainText
+              text: "To"
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: 9
+            }
+            Rectangle {
+              radius: 4
+              color: root.background
+              border.color: endInput.activeFocus ? root.accent : root.track
+              border.width: 1
+              Layout.preferredWidth: 104
+              Layout.preferredHeight: 26
+
+              TextInput {
+                id: endInput
+                anchors.fill: parent
+                anchors.leftMargin: 6
+                anchors.rightMargin: 6
+                verticalAlignment: TextInput.AlignVCenter
+                text: root.inputEndDate
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: 10
+                selectByMouse: true
+                onTextChanged: root.inputEndDate = text
+              }
+            }
+          }
+
+          // Quick Presets: [This Month] [Last Month] [Last 14d]
+          RowLayout {
+            spacing: 4
+
+            // "This Month"
+            Rectangle {
+              radius: 3
+              color: tmMouse.containsMouse ? root.track : "transparent"
+              border.color: root.track
+              border.width: 1
+              Layout.preferredHeight: 24
+              Layout.preferredWidth: 76
+
+              Text {
+                anchors.centerIn: parent
+                textFormat: Text.PlainText
+                text: "This Month"
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: 9
+              }
+              MouseArea {
+                id: tmMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  var now = new Date()
+                  var y = now.getFullYear()
+                  var m = (now.getMonth() + 1 < 10 ? "0" : "") + (now.getMonth() + 1)
+                  var d = (now.getDate() < 10 ? "0" : "") + now.getDate()
+                  root.inputStartDate = y + "-" + m + "-01"
+                  root.inputEndDate = y + "-" + m + "-" + d
+                }
+              }
+            }
+
+            // "Last Month"
+            Rectangle {
+              radius: 3
+              color: lmMouse.containsMouse ? root.track : "transparent"
+              border.color: root.track
+              border.width: 1
+              Layout.preferredHeight: 24
+              Layout.preferredWidth: 76
+
+              Text {
+                anchors.centerIn: parent
+                textFormat: Text.PlainText
+                text: "Last Month"
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: 9
+              }
+              MouseArea {
+                id: lmMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  var now = new Date()
+                  var prevMonthLastDay = new Date(now.getFullYear(), now.getMonth(), 0)
+                  var prevMonthFirstDay = new Date(prevMonthLastDay.getFullYear(), prevMonthLastDay.getMonth(), 1)
+                  function fmt(dtObj) {
+                    var yr = dtObj.getFullYear()
+                    var mo = (dtObj.getMonth() + 1 < 10 ? "0" : "") + (dtObj.getMonth() + 1)
+                    var dy = (dtObj.getDate() < 10 ? "0" : "") + dtObj.getDate()
+                    return yr + "-" + mo + "-" + dy
+                  }
+                  root.inputStartDate = fmt(prevMonthFirstDay)
+                  root.inputEndDate = fmt(prevMonthLastDay)
+                }
+              }
+            }
+
+            // "Last 14d"
+            Rectangle {
+              radius: 3
+              color: l14Mouse.containsMouse ? root.track : "transparent"
+              border.color: root.track
+              border.width: 1
+              Layout.preferredHeight: 24
+              Layout.preferredWidth: 64
+
+              Text {
+                anchors.centerIn: parent
+                textFormat: Text.PlainText
+                text: "Last 14d"
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: 9
+              }
+              MouseArea {
+                id: l14Mouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  var now = new Date()
+                  var past = new Date(now.getTime() - 13 * 86400000)
+                  function fmt(dtObj) {
+                    var yr = dtObj.getFullYear()
+                    var mo = (dtObj.getMonth() + 1 < 10 ? "0" : "") + (dtObj.getMonth() + 1)
+                    var dy = (dtObj.getDate() < 10 ? "0" : "") + dtObj.getDate()
+                    return yr + "-" + mo + "-" + dy
+                  }
+                  root.inputStartDate = fmt(past)
+                  root.inputEndDate = fmt(now)
+                }
+              }
+            }
+          }
+
+          Item { Layout.fillWidth: true }
+
+          // Apply Button
+          Rectangle {
+            radius: 4
+            color: root.accent
+            Layout.preferredHeight: 26
+            Layout.preferredWidth: 64
+
+            Text {
+              anchors.centerIn: parent
+              textFormat: Text.PlainText
+              text: "Apply"
+              color: root.isLightTheme ? "#FFFFFF" : "#0F141C"
+              font.family: root.fontFamily
+              font.pixelSize: 10
+              font.bold: true
+            }
+
+            MouseArea {
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: {
+                if (root.inputStartDate && root.inputEndDate) {
+                  provider.setCustomRange(root.inputStartDate, root.inputEndDate)
+                }
+              }
+            }
+          }
+
+          // Close Drawer Button
+          Rectangle {
+            radius: 4
+            color: closeDrawerMouse.containsMouse ? root.track : "transparent"
+            Layout.preferredHeight: 24
+            Layout.preferredWidth: 24
+
+            Text {
+              anchors.centerIn: parent
+              textFormat: Text.PlainText
+              text: "✕"
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: 9
+            }
+
+            MouseArea {
+              id: closeDrawerMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.showDateRangePicker = false
             }
           }
         }

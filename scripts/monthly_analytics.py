@@ -555,6 +555,7 @@ def scan_codex_monthly(date_set: set[str], base_dir: Path | None = None, file_ca
 def aggregate_monthly(
     num_days: int = 30,
     end_date: dt.date | None = None,
+    start_date: dt.date | None = None,
     mode: str = "rolling",  # "rolling" or "calendar"
     claude_base_dir: Path | None = None,
     antigravity_base_dir: Path | None = None,
@@ -576,7 +577,17 @@ def aggregate_monthly(
             file_cache = {}
 
     # Determine date list
-    if mode == "calendar":
+    if start_date is not None:
+        end = end_date or dt.datetime.now().date()
+        start = start_date
+        if start > end:
+            start, end = end, start
+        if (end - start).days > 365:
+            start = end - dt.timedelta(days=365)
+        days_span = (end - start).days + 1
+        date_list = [(start + dt.timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days_span)]
+        period_label = f"{start.strftime('%b %d')} – {end.strftime('%b %d, %Y')}"
+    elif mode == "calendar":
         date_list = get_calendar_month_date_list()
         period_label = dt.datetime.now().strftime("%B %Y")
     else:
@@ -859,12 +870,36 @@ def aggregate_monthly(
 def main():
     parser = argparse.ArgumentParser(description="Agent Hub Monthly Analytics Engine")
     parser.add_argument("--days", type=int, default=30, help="Number of rolling days to analyze (default: 30)")
+    parser.add_argument("--start", type=str, default=None, help="Start date (YYYY-MM-DD) for custom range")
+    parser.add_argument("--end", type=str, default=None, help="End date (YYYY-MM-DD) for custom range")
     parser.add_argument("--mode", choices=["rolling", "calendar"], default="rolling", help="Analysis mode")
     parser.add_argument("--force", action="store_true", help="Force re-scan without using cache")
     parser.add_argument("--summary", action="store_true", help="Print human-readable summary instead of JSON")
 
     args = parser.parse_args()
-    data = aggregate_monthly(num_days=args.days, mode=args.mode, force=args.force)
+
+    start_dt = None
+    end_dt = None
+    if args.start:
+        try:
+            start_dt = dt.datetime.strptime(args.start, "%Y-%m-%d").date()
+        except ValueError:
+            sys.stderr.write(f"Invalid start date: {args.start}\n")
+            sys.exit(1)
+    if args.end:
+        try:
+            end_dt = dt.datetime.strptime(args.end, "%Y-%m-%d").date()
+        except ValueError:
+            sys.stderr.write(f"Invalid end date: {args.end}\n")
+            sys.exit(1)
+
+    data = aggregate_monthly(
+        num_days=args.days,
+        start_date=start_dt,
+        end_date=end_dt,
+        mode=args.mode,
+        force=args.force
+    )
 
     if args.summary:
         s = data["summary"]

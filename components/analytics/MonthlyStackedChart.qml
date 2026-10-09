@@ -78,7 +78,7 @@ Rectangle {
 
         Text {
           textFormat: Text.PlainText
-          text: "30-Day Multi-Agent Activity Timeline"
+          text: ((chartRoot.dailyData && chartRoot.dailyData.length > 0) ? chartRoot.dailyData.length : 30) + "-Day Multi-Agent Activity Timeline"
           color: chartRoot.foregroundColor
           font.family: chartRoot.fontFamily
           font.pixelSize: 12
@@ -182,7 +182,7 @@ Rectangle {
         color: chartRoot.trackColor
       }
 
-      // 30 Columns Layout
+      // Columns Layout
       RowLayout {
         id: barsRow
         anchors.left: parent.left
@@ -190,7 +190,7 @@ Rectangle {
         anchors.top: parent.top
         anchors.bottom: dateRow.top
         anchors.bottomMargin: 6
-        spacing: 3
+        spacing: (chartRoot.dailyData && chartRoot.dailyData.length > 60) ? 1 : ((chartRoot.dailyData && chartRoot.dailyData.length > 35) ? 2 : 3)
 
         Repeater {
           model: chartRoot.dailyData || []
@@ -283,7 +283,7 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         height: 14
-        spacing: 3
+        spacing: (chartRoot.dailyData && chartRoot.dailyData.length > 60) ? 1 : ((chartRoot.dailyData && chartRoot.dailyData.length > 35) ? 2 : 3)
 
         Repeater {
           model: chartRoot.dailyData || []
@@ -293,8 +293,13 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            // Show label every 5 days or first/last
-            readonly property bool showLabel: (index === 0) || (index === chartRoot.dailyData.length - 1) || (index % 5 === 0)
+            readonly property bool showLabel: {
+              if (!chartRoot.dailyData || chartRoot.dailyData.length === 0) return false
+              var total = chartRoot.dailyData.length
+              if (index === 0 || index === total - 1) return true
+              var step = total > 60 ? 15 : (total > 35 ? 10 : 5)
+              return (index % step === 0)
+            }
 
             Text {
               visible: showLabel

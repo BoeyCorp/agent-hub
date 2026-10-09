@@ -509,6 +509,27 @@ BarWidget {
     function openAnalytics(): string { root.openAnalytics(); return "ok" }
     function closeAnalytics(): string { root.closeAnalytics(); return "ok" }
     function toggleAnalytics(): string { root.toggleAnalytics(); return "ok" }
+    function setAnalyticsDays(days: int): string {
+      if (analyticsWindowLoader.item && analyticsWindowLoader.item.provider) {
+        analyticsWindowLoader.item.provider.setDays(days)
+        return "ok"
+      }
+      return "not loaded"
+    }
+    function toggleAnalyticsDateRange(): string {
+      if (analyticsWindowLoader.item) {
+        analyticsWindowLoader.item.showDateRangePicker = !analyticsWindowLoader.item.showDateRangePicker
+        return "ok"
+      }
+      return "not loaded"
+    }
+    function setAnalyticsCustomRange(start: string, end: string): string {
+      if (analyticsWindowLoader.item && analyticsWindowLoader.item.provider) {
+        analyticsWindowLoader.item.provider.setCustomRange(start, end)
+        return "ok"
+      }
+      return "not loaded"
+    }
     function setBadgeMode(mode: string): string { root.updateSetting("badgeMode", mode); return "ok" }
     function setMultiDot(enabled: bool): string { root.updateSetting("enableMultiDot", enabled); return "ok" }
     function setTab(tabName: string): string {

@@ -44,7 +44,7 @@ Rectangle {
 
       Text {
         textFormat: Text.PlainText
-        text: "Monthly Activity Heatmap"
+        text: ((heatRoot.heatmapData && heatRoot.heatmapData.length > 0) ? heatRoot.heatmapData.length : 30) + "-Day Activity Heatmap"
         color: heatRoot.foregroundColor
         font.family: heatRoot.fontFamily
         font.pixelSize: 11
@@ -69,7 +69,7 @@ Rectangle {
     Flow {
       Layout.fillWidth: true
       Layout.fillHeight: true
-      spacing: 4
+      spacing: (heatRoot.heatmapData && heatRoot.heatmapData.length > 60) ? 3 : 4
 
       Repeater {
         model: heatRoot.heatmapData || []
@@ -77,8 +77,9 @@ Rectangle {
         delegate: Rectangle {
           required property var modelData
           required property int index
-          width: 18
-          height: 18
+          readonly property bool isCompact: heatRoot.heatmapData && heatRoot.heatmapData.length > 60
+          width: isCompact ? 15 : 18
+          height: isCompact ? 15 : 18
           radius: 3
           color: heatRoot.getTileColor(modelData ? modelData.intensity : 0)
           border.width: hMouse.containsMouse ? 1 : 0
@@ -90,7 +91,7 @@ Rectangle {
             text: modelData ? String(modelData.dayOfMonth || "") : ""
             color: (modelData && modelData.intensity >= 3) ? (heatRoot.isLightTheme ? "#FFFFFF" : "#000000") : heatRoot.dimColor
             font.family: heatRoot.fontFamily
-            font.pixelSize: 8
+            font.pixelSize: isCompact ? 7 : 8
             font.bold: modelData && modelData.intensity > 0
           }
 

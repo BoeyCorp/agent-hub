@@ -130,6 +130,25 @@ class TestMonthlyAnalytics(unittest.TestCase):
             self.assertGreaterEqual(h["intensity"], 0)
             self.assertLessEqual(h["intensity"], 4)
 
+    def test_multi_period_views(self):
+        for days in (30, 60, 90):
+            res = aggregate_monthly(num_days=days)
+            self.assertEqual(res["schemaVersion"], 1)
+            self.assertEqual(len(res["daily"]), days)
+            self.assertEqual(len(res["heatmap"]), days)
+            self.assertEqual(res["period"]["daysCount"], days)
+
+    def test_custom_date_range_aggregation(self):
+        start = dt.date(2026, 9, 1)
+        end = dt.date(2026, 9, 15)
+        res = aggregate_monthly(start_date=start, end_date=end)
+        self.assertEqual(res["schemaVersion"], 1)
+        self.assertEqual(len(res["daily"]), 15)
+        self.assertEqual(res["period"]["start"], "2026-09-01")
+        self.assertEqual(res["period"]["end"], "2026-09-15")
+        self.assertEqual(res["period"]["daysCount"], 15)
+        self.assertEqual(res["period"]["label"], "Sep 01 – Sep 15, 2026")
+
 
 if __name__ == "__main__":
     unittest.main()
