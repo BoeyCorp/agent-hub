@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "boeycorp.agent-hub",
   "name": "Agent Hub",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "BoeyCorp & contributors",
   "license": "MIT",
   "description": "Unified AI Agent Hub for Omarchy — multi-agent session monitor, token telemetry, quota burn forecasting, and interactive launcher for Claude Code, Antigravity, and autonomous pair programmers.",
