@@ -27,8 +27,13 @@ try:
     import claude_scanner
     import antigravity_scanner
     import codex_scanner
+    import quota_pace
+    import quota_alerts
+    import quota_status
+    import spend_summary
 except ImportError:
     from scripts import claude_scanner, antigravity_scanner, codex_scanner
+    from scripts import quota_pace, quota_alerts, quota_status, spend_summary
 
 
 def default_cache_dir() -> Path:
@@ -144,8 +149,15 @@ def scan_hub(
     enable_antigravity: bool = True,
     enable_codex: bool = True,
     force: bool = False,
-    alert_threshold: int | None = None
+    alert_threshold: int | None = None,
+    crit_threshold: int | None = None,
+    notify_replenish: bool = True,
 ) -> dict[str, Any]:
+    """Scan every agent and consolidate telemetry.
+
+    ``alert_threshold`` is the warning level (percent left); passing it enables
+    desktop quota alerts. ``crit_threshold`` is the critical level.
+    """
     cache_dir = default_cache_dir()
     cache_file = cache_dir / "hub_scanner_cache.json"
 
@@ -167,7 +179,7 @@ def scan_hub(
 
     def fetch_claude():
         try:
-            return claude_scanner.scan(claude_scanner.default_base_dir(), force=force, alert_threshold=alert_threshold)
+            return claude_scanner.scan(claude_scanner.default_base_dir(), force=force)
         except Exception as e:
             empty = claude_scanner.empty_result()
             empty["usageStatusText"] = f"Error: {e}"
@@ -175,7 +187,7 @@ def scan_hub(
 
     def fetch_antigravity():
         try:
-            return antigravity_scanner.scan(antigravity_scanner.default_base_dir(), force=force, alert_threshold=alert_threshold)
+            return antigravity_scanner.scan(antigravity_scanner.default_base_dir(), force=force)
         except Exception as e:
             empty = antigravity_scanner.empty_result()
             empty["usageStatusText"] = f"Error: {e}"
@@ -392,6 +404,38 @@ def scan_hub(
     total_steps = int(claude_data.get("totalSteps", 0)) + int(antigravity_data.get("totalSteps", 0)) + int(codex_data.get("totalSteps", 0))
     total_sessions = int(claude_data.get("totalSessions", 0)) + int(antigravity_data.get("totalSessions", 0)) + int(codex_data.get("totalSessions", 0))
 
+    # Pace forecasting, actionable quota status, and alerts (shared across agents)
+    agent_payloads = {"claude": claude_data, "antigravity": antigravity_data, "codex": codex_data}
+    agent_base_dirs = {
+        "claude": claude_scanner.default_base_dir(),
+        "antigravity": antigravity_scanner.default_base_dir(),
+        "codex": None,
+    }
+    quota_status_by_agent: dict[str, Any] = {}
+    for agent_id, payload in agent_payloads.items():
+        groups = payload.get("quotaGroups") or []
+        try:
+            quota_pace.apply_pace(cache_dir, agent_id, groups)
+        except Exception:
+            pass
+        try:
+            quota_status_by_agent[agent_id] = quota_status.derive_status(
+                agent_id, bool(groups), agent_base_dirs[agent_id]
+            )
+        except Exception:
+            quota_status_by_agent[agent_id] = {"state": "ok", "reason": "", "message": "", "command": [], "commandText": "", "stale": False}
+    if alert_threshold is not None:
+        try:
+            quota_alerts.check_alerts(
+                cache_dir,
+                {a: p.get("quotaGroups") or [] for a, p in agent_payloads.items()},
+                warn_pct=alert_threshold,
+                crit_pct=crit_threshold if crit_threshold is not None else min(alert_threshold, 10),
+                notify_replenish=notify_replenish,
+            )
+        except Exception:
+            pass
+
     # Quota groups consolidation
     quota_groups = list(claude_data.get("quotaGroups", [])) + list(antigravity_data.get("quotaGroups", [])) + list(codex_data.get("quotaGroups", []))
 
@@ -455,6 +499,8 @@ def scan_hub(
         "activeSessions": active_sessions,
         "recentSessions": all_recent[:15],
         "quotaGroups": quota_groups,
+        "quotaStatus": quota_status_by_agent,
+        "spend": spend_summary.get_spend(cache_dir),
         "toolUsage": tool_usage,
         "recentDays": recent_days,
         "providers": {
@@ -508,7 +554,9 @@ def main() -> None:
     parser.add_argument("--no-claude", action="store_true", help="Disable Claude Code scan")
     parser.add_argument("--no-antigravity", action="store_true", help="Disable Antigravity scan")
     parser.add_argument("--no-codex", action="store_true", help="Disable Codex scan")
-    parser.add_argument("--notify-low-quota", type=int, nargs="?", const=15, default=None, help="Run quota alert check")
+    parser.add_argument("--notify-low-quota", type=int, nargs="?", const=25, default=None, help="Run quota alert check; value is the warning level (percent left)")
+    parser.add_argument("--crit-threshold", type=int, default=None, help="Critical alert level (percent left)")
+    parser.add_argument("--no-notify-replenish", action="store_true", help="Do not announce when a limit resets")
     args = parser.parse_args()
 
     if args.kill:
@@ -543,7 +591,9 @@ def main() -> None:
         enable_antigravity=enable_antigravity,
         enable_codex=enable_codex,
         force=args.force,
-        alert_threshold=args.notify_low_quota
+        alert_threshold=args.notify_low_quota,
+        crit_threshold=args.crit_threshold,
+        notify_replenish=not args.no_notify_replenish,
     )
     print(json.dumps(result, indent=2, ensure_ascii=False))
 

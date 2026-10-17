@@ -6,7 +6,9 @@
   "author": "BoeyCorp & contributors",
   "license": "MIT",
   "description": "Unified AI Agent Hub for Omarchy — multi-agent session monitor, token telemetry, quota burn forecasting, and interactive launcher for Claude Code, Antigravity, and autonomous pair programmers.",
-  "kinds": ["bar-widget"],
+  "kinds": [
+    "bar-widget"
+  ],
   "activation": "on-demand",
   "entryPoints": {
     "barWidget": "Widget.qml"
@@ -23,14 +25,23 @@
       "enableMultiDot": true,
       "multiDotMode": "active",
       "enableQuotaAlerts": true,
-      "quotaAlertThreshold": 15,
       "notifyOnReplenish": true,
       "terminalCommand": "",
       "recentSessionsLimit": 6,
       "defaultTab": "overview",
       "enableClaude": true,
       "enableAntigravity": true,
-      "enableCodex": true
+      "enableCodex": true,
+      "quotaWarnThreshold": 25,
+      "quotaCritThreshold": 10,
+      "limitDisplay": "left",
+      "enableQuotaChips": false,
+      "chipWindow": "tightest",
+      "chipSecondLimit": false,
+      "chipShowReset": false,
+      "chipHideUsedUp": false,
+      "chipMax": 3,
+      "chipProviderColors": true
     },
     "schema": [
       {
@@ -46,8 +57,25 @@
         "key": "badgeMode",
         "type": "enum",
         "label": "Bar badge mode",
-        "options": ["active", "prompts", "tokens", "quota", "off"],
+        "options": [
+          "active",
+          "prompts",
+          "tokens",
+          "quota",
+          "cost",
+          "off"
+        ],
         "defaultValue": "active"
+      },
+      {
+        "key": "limitDisplay",
+        "type": "enum",
+        "label": "Show limits as",
+        "options": [
+          "left",
+          "used"
+        ],
+        "defaultValue": "left"
       },
       {
         "key": "showBadge",
@@ -65,8 +93,62 @@
         "key": "multiDotMode",
         "type": "enum",
         "label": "Multi-dot bar display mode",
-        "options": ["active", "all"],
+        "options": [
+          "active",
+          "all"
+        ],
         "defaultValue": "active"
+      },
+      {
+        "key": "enableQuotaChips",
+        "type": "boolean",
+        "label": "Show quota chips in bar",
+        "defaultValue": false
+      },
+      {
+        "key": "chipWindow",
+        "type": "enum",
+        "label": "Limit shown on chips",
+        "options": [
+          "tightest",
+          "5h",
+          "7d",
+          "monthly"
+        ],
+        "defaultValue": "tightest"
+      },
+      {
+        "key": "chipSecondLimit",
+        "type": "boolean",
+        "label": "Second limit below the first",
+        "defaultValue": false
+      },
+      {
+        "key": "chipShowReset",
+        "type": "boolean",
+        "label": "Show when limits reset",
+        "defaultValue": false
+      },
+      {
+        "key": "chipHideUsedUp",
+        "type": "boolean",
+        "label": "Hide agents that are used up",
+        "defaultValue": false
+      },
+      {
+        "key": "chipMax",
+        "type": "integer",
+        "label": "Chips in the bar",
+        "min": 1,
+        "max": 3,
+        "step": 1,
+        "defaultValue": 3
+      },
+      {
+        "key": "chipProviderColors",
+        "type": "boolean",
+        "label": "Provider colors on chips",
+        "defaultValue": true
       },
       {
         "key": "enableQuotaAlerts",
@@ -75,13 +157,22 @@
         "defaultValue": true
       },
       {
-        "key": "quotaAlertThreshold",
+        "key": "quotaWarnThreshold",
         "type": "integer",
-        "label": "Low quota alert threshold (%)",
+        "label": "Warning level (% left)",
         "min": 5,
         "max": 50,
         "step": 5,
-        "defaultValue": 15
+        "defaultValue": 25
+      },
+      {
+        "key": "quotaCritThreshold",
+        "type": "integer",
+        "label": "Critical level (% left)",
+        "min": 1,
+        "max": 25,
+        "step": 1,
+        "defaultValue": 10
       },
       {
         "key": "notifyOnReplenish",
@@ -108,7 +199,13 @@
         "key": "defaultTab",
         "type": "enum",
         "label": "Default popup tab",
-        "options": ["overview", "claude", "antigravity", "codex"],
+        "options": [
+          "overview",
+          "claude",
+          "antigravity",
+          "codex",
+          "spend"
+        ],
         "defaultValue": "overview"
       },
       {

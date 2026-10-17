@@ -37,6 +37,8 @@ Item {
     property var recentSessions: []
     property var toolUsage: ({})
     property var quotaGroups: []
+    property var quotaStatus: ({})
+    property var spend: ({})
     property var activeAgentCounts: ({ "claude": 0, "antigravity": 0, "codex": 0 })
     property var agentStates: ({})
 
@@ -200,6 +202,8 @@ Item {
             root.recentSessions = data.recentSessions || []
             root.toolUsage = data.toolUsage || ({})
             root.quotaGroups = data.quotaGroups || []
+            root.quotaStatus = data.quotaStatus || ({})
+            root.spend = data.spend || ({})
             root.activeAgentCounts = data.activeAgentCounts || ({ "claude": 0, "antigravity": 0, "codex": 0 })
             root.agentStates = data.agentStates || ({})
 
@@ -243,8 +247,15 @@ Item {
 
         var enableAlerts = (root.settings && root.settings.enableQuotaAlerts !== undefined) ? Boolean(root.settings.enableQuotaAlerts) : true
         if (enableAlerts) {
-            var thresholdPct = (root.settings && root.settings.quotaAlertThreshold !== undefined) ? Number(root.settings.quotaAlertThreshold) : 15
-            cmd.push("--notify-low-quota", String(thresholdPct || 15))
+            // Thresholds are percent *left*. quotaAlertThreshold is the pre-1.1 name of the warning level.
+            var warnPct = Number(root.settings && root.settings.quotaWarnThreshold !== undefined ? root.settings.quotaWarnThreshold
+                        : (root.settings && root.settings.quotaAlertThreshold !== undefined ? root.settings.quotaAlertThreshold : 25))
+            var critPct = Number(root.settings && root.settings.quotaCritThreshold !== undefined ? root.settings.quotaCritThreshold : 10)
+            if (!isFinite(warnPct) || warnPct <= 0) warnPct = 25
+            if (!isFinite(critPct) || critPct <= 0) critPct = 10
+            cmd.push("--notify-low-quota", String(Math.round(warnPct)), "--crit-threshold", String(Math.round(Math.min(critPct, warnPct))))
+            var replenish = (root.settings && root.settings.notifyOnReplenish !== undefined) ? Boolean(root.settings.notifyOnReplenish) : true
+            if (!replenish) cmd.push("--no-notify-replenish")
         }
 
         scanner.command = cmd
