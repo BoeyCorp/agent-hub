@@ -2877,7 +2877,18 @@ BarWidget {
     property var provider: null
     readonly property var spend: provider ? (provider.spend || ({})) : ({})
     readonly property var cacheInfo: (spend && spend.cacheSavings) ? spend.cacheSavings : ({})
+    readonly property var priceInfo: (spend && spend.pricing) ? spend.pricing : ({})
     property int hoveredDayIndex: -1
+
+    function priceSourceText() {
+      var src = priceInfo.source || "Bundled"
+      var when = ""
+      if (priceInfo.updatedAt) {
+        var d = new Date(priceInfo.updatedAt)
+        if (!isNaN(d.getTime())) when = " · " + Qt.formatDate(d, "d MMM")
+      }
+      return "API-equivalent cost · prices: " + src + when
+    }
 
     Layout.fillWidth: true
     spacing: 8
@@ -2887,14 +2898,26 @@ BarWidget {
       title: "Spend & Token Cost"
       titleColor: root.accent
       icon: "assets/spend.svg"
-      badgeText: "API Telemetry"
+      badgeText: "API-equivalent"
       badgeColor: root.accent
-      subtitle: "Estimated local cost derived from prompt and token volume across agents"
+      subtitle: spendView.priceSourceText()
 
       ColumnLayout {
         Layout.fillWidth: true
         Layout.minimumWidth: 0
         spacing: 6
+
+        Text {
+          readonly property var unknown: spendView.priceInfo.unknownModels || []
+          visible: unknown.length > 0
+          Layout.fillWidth: true
+          textFormat: Text.PlainText
+          wrapMode: Text.WordWrap
+          text: "No price found for " + unknown.join(", ") + ". These models count as $0."
+          color: root.urgent
+          font.family: root.fontFamily
+          font.pixelSize: 9
+        }
 
         RowLayout {
           Layout.fillWidth: true

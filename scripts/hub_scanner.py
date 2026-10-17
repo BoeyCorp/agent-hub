@@ -31,9 +31,10 @@ try:
     import quota_alerts
     import quota_status
     import spend_summary
+    import pricing
 except ImportError:
     from scripts import claude_scanner, antigravity_scanner, codex_scanner
-    from scripts import quota_pace, quota_alerts, quota_status, spend_summary
+    from scripts import quota_pace, quota_alerts, quota_status, spend_summary, pricing
 
 
 def default_cache_dir() -> Path:
@@ -173,6 +174,9 @@ def scan_hub(
         except Exception:
             pass
 
+    # Daily background fetch of current model prices (never blocks the scan)
+    pricing.ensure_fresh(cache_dir)
+
     claude_data: dict[str, Any] = {}
     antigravity_data: dict[str, Any] = {}
     codex_data: dict[str, Any] = {}
@@ -236,10 +240,7 @@ def scan_hub(
                 cwrite = int(a_data.get("todayCacheCreationTokens", 0))
                 if inp == 0 and out == 0:
                     inp, out = int(tok * 0.8), int(tok * 0.2)
-                try:
-                    c = cost_func(a_data.get("currentModel", def_model), inp, out, cread, cwrite)
-                except TypeError:
-                    c = cost_func(a_data.get("currentModel", def_model), inp, out, cread)
+                c = cost_func(a_data.get("currentModel", def_model), inp, out, cread, cwrite)
                 a_data["todayTokenCost"] = round(c, 2)
             else:
                 a_data["todayTokenCost"] = 0.0

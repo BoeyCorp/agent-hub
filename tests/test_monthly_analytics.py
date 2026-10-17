@@ -150,5 +150,31 @@ class TestMonthlyAnalytics(unittest.TestCase):
         self.assertEqual(res["period"]["label"], "Sep 01 – Sep 15, 2026")
 
 
+    def test_antigravity_models_per_step_and_no_double_count(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            logs = base / "brain" / "conv1" / ".system_generated" / "logs"
+            logs.mkdir(parents=True)
+            day = "2026-10-10"
+            sel = "<SETTINGS_CHANGE> The user changed setting `Model Selection` from {} to {}. No need to comment on this change."
+            steps = [
+                # Tokens before the first selection belong to the first selected model
+                {"created_at": f"{day}T10:00:00Z", "type": "PLANNER_RESPONSE", "input_tokens": 100, "output_tokens": 10},
+                {"created_at": f"{day}T10:01:00Z", "type": "USER_INPUT", "content": sel.format("None", "Gemini 3.8 Flash (High)")},
+                {"created_at": f"{day}T10:02:00Z", "type": "PLANNER_RESPONSE", "input_tokens": 200, "output_tokens": 20},
+                {"created_at": f"{day}T10:03:00Z", "type": "USER_INPUT", "content": sel.format("Gemini 3.8 Flash (High)", "Gemini 4 Argon (Medium)")},
+                {"created_at": f"{day}T10:04:00Z", "type": "PLANNER_RESPONSE", "input_tokens": 1000, "output_tokens": 100},
+            ]
+            text = "".join(json.dumps(s) + "\n" for s in steps)
+            (logs / "transcript.jsonl").write_text(text)
+            (logs / "transcript_full.jsonl").write_text(text)
+
+            res = scan_antigravity_monthly({day}, base, {})[day]
+            self.assertEqual(res["tokens"], 1430)
+            self.assertEqual(dict(res["models"]), {"Gemini 3.8 Flash (High)": 330, "Gemini 4 Argon (Medium)": 1100})
+            self.assertEqual(set(res["modelCosts"]), {"Gemini 3.8 Flash (High)", "Gemini 4 Argon (Medium)"})
+            self.assertAlmostEqual(sum(res["modelCosts"].values()), res["cost"])
+
+
 if __name__ == "__main__":
     unittest.main()

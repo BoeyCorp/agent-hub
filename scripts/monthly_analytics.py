@@ -19,9 +19,13 @@ from typing import Any
 
 # Import cost estimation helpers from existing scanners
 try:
-    from scripts import claude_scanner, antigravity_scanner, codex_scanner
+    from scripts import claude_scanner, antigravity_scanner, codex_scanner, pricing
 except ImportError:
-    import claude_scanner, antigravity_scanner, codex_scanner
+    import claude_scanner, antigravity_scanner, codex_scanner, pricing
+
+
+# Increase when a scan change makes cached per-file results wrong
+SCAN_VERSION = 2
 
 
 def default_cache_dir() -> Path:
@@ -85,7 +89,8 @@ def scan_claude_monthly(date_set: set[str], base_dir: Path | None = None, file_c
         "outputTokens": 0,
         "cacheReadTokens": 0,
         "cacheCreationTokens": 0,
-        "models": Counter()
+        "models": Counter(),
+        "modelCosts": Counter()
     })
 
     # 1. Parse history.jsonl
@@ -136,6 +141,8 @@ def scan_claude_monthly(date_set: set[str], base_dir: Path | None = None, file_c
                         r["cacheCreationTokens"] += data.get("cacheCreationTokens", 0)
                         for m_name, m_tok in data.get("models", {}).items():
                             r["models"][m_name] += m_tok
+                        for m_name, m_cost in data.get("modelCosts", {}).items():
+                            r["modelCosts"][m_name] += m_cost
                 continue
 
             # Need to parse this file
@@ -147,7 +154,8 @@ def scan_claude_monthly(date_set: set[str], base_dir: Path | None = None, file_c
                 "outputTokens": 0,
                 "cacheReadTokens": 0,
                 "cacheCreationTokens": 0,
-                "models": Counter()
+                "models": Counter(),
+                "modelCosts": Counter()
             })
 
             file_model = "Claude (Default)"
@@ -195,9 +203,9 @@ def scan_claude_monthly(date_set: set[str], base_dir: Path | None = None, file_c
                                 d_stat["cacheReadTokens"] += u_read
                                 d_stat["tokens"] += tot
                                 d_stat["models"][file_model] += tot
-                                d_stat["cost"] += claude_scanner.estimate_claude_token_cost(
-                                    file_model, u_in, u_out, u_read, u_create
-                                )
+                                c = claude_scanner.estimate_claude_token_cost(file_model, u_in, u_out, u_read, u_create)
+                                d_stat["cost"] += c
+                                d_stat["modelCosts"][file_model] += c
             except Exception:
                 continue
 
@@ -212,7 +220,8 @@ def scan_claude_monthly(date_set: set[str], base_dir: Path | None = None, file_c
                     "outputTokens": d_stat["outputTokens"],
                     "cacheReadTokens": d_stat["cacheReadTokens"],
                     "cacheCreationTokens": d_stat["cacheCreationTokens"],
-                    "models": dict(d_stat["models"])
+                    "models": dict(d_stat["models"]),
+                    "modelCosts": {k: round(v, 6) for k, v in d_stat["modelCosts"].items()}
                 }
                 if day in date_set:
                     r = results[day]
@@ -225,6 +234,8 @@ def scan_claude_monthly(date_set: set[str], base_dir: Path | None = None, file_c
                     r["cacheCreationTokens"] += d_stat["cacheCreationTokens"]
                     for m_name, m_tok in d_stat["models"].items():
                         r["models"][m_name] += m_tok
+                    for m_name, m_cost in d_stat["modelCosts"].items():
+                        r["modelCosts"][m_name] += m_cost
 
             f_cache[file_key] = {
                 "mtime": mtime,
@@ -233,6 +244,24 @@ def scan_claude_monthly(date_set: set[str], base_dir: Path | None = None, file_c
             }
 
     return results
+
+
+def first_antigravity_model(path: Path) -> str:
+    """Model of a transcript's first `Model Selection` step; it also applies to the steps before it."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if "Model Selection" not in line:
+                    continue
+                try:
+                    m = antigravity_scanner.model_from_step_content(json.loads(line).get("content"))
+                except Exception:
+                    continue
+                if m:
+                    return m
+    except Exception:
+        pass
+    return ""
 
 
 def scan_antigravity_monthly(date_set: set[str], base_dir: Path | None = None, file_cache: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
@@ -251,7 +280,8 @@ def scan_antigravity_monthly(date_set: set[str], base_dir: Path | None = None, f
         "outputTokens": 0,
         "cacheReadTokens": 0,
         "cacheCreationTokens": 0,
-        "models": Counter()
+        "models": Counter(),
+        "modelCosts": Counter()
     })
 
     # 1. Parse history.jsonl
@@ -276,7 +306,8 @@ def scan_antigravity_monthly(date_set: set[str], base_dir: Path | None = None, f
 
     # 2. Parse brain transcripts
     if brain_dir.exists():
-        for p in brain_dir.glob("*/.system_generated/logs/transcript*.jsonl"):
+        # transcript_full.jsonl repeats every step of transcript.jsonl; read only one of them
+        for p in brain_dir.glob("*/.system_generated/logs/transcript.jsonl"):
             try:
                 st = p.stat()
                 mtime = st.st_mtime
@@ -300,6 +331,8 @@ def scan_antigravity_monthly(date_set: set[str], base_dir: Path | None = None, f
                         r["cacheReadTokens"] += data.get("cacheReadTokens", 0)
                         for m_name, m_tok in data.get("models", {}).items():
                             r["models"][m_name] += m_tok
+                        for m_name, m_cost in data.get("modelCosts", {}).items():
+                            r["modelCosts"][m_name] += m_cost
                 continue
 
             file_daily: dict[str, dict[str, Any]] = defaultdict(lambda: {
@@ -309,10 +342,11 @@ def scan_antigravity_monthly(date_set: set[str], base_dir: Path | None = None, f
                 "inputTokens": 0,
                 "outputTokens": 0,
                 "cacheReadTokens": 0,
-                "models": Counter()
+                "models": Counter(),
+                "modelCosts": Counter()
             })
 
-            file_model = "Gemini 3.8 Flash (High)"
+            file_model = first_antigravity_model(p) or antigravity_scanner.read_configured_model(base)
             try:
                 with open(p, "r", encoding="utf-8", errors="replace") as f:
                     for line in f:
@@ -338,9 +372,9 @@ def scan_antigravity_monthly(date_set: set[str], base_dir: Path | None = None, f
                         u_read = int(entry.get("cache_read_tokens") or 0)
                         tot = u_in + u_out + u_read
 
-                        m = entry.get("model")
-                        if m and isinstance(m, str):
-                            file_model = sanitize_str(m, 80)
+                        m = antigravity_scanner.model_from_step_content(entry.get("content"))
+                        if m:
+                            file_model = m
 
                         if tot > 0:
                             d_stat = file_daily[day]
@@ -349,9 +383,9 @@ def scan_antigravity_monthly(date_set: set[str], base_dir: Path | None = None, f
                             d_stat["cacheReadTokens"] += u_read
                             d_stat["tokens"] += tot
                             d_stat["models"][file_model] += tot
-                            d_stat["cost"] += antigravity_scanner.estimate_antigravity_token_cost(
-                                file_model, u_in, u_out, u_read
-                            )
+                            c = antigravity_scanner.estimate_antigravity_token_cost(file_model, u_in, u_out, u_read)
+                            d_stat["cost"] += c
+                            d_stat["modelCosts"][file_model] += c
             except Exception:
                 continue
 
@@ -365,7 +399,8 @@ def scan_antigravity_monthly(date_set: set[str], base_dir: Path | None = None, f
                     "inputTokens": d_stat["inputTokens"],
                     "outputTokens": d_stat["outputTokens"],
                     "cacheReadTokens": d_stat["cacheReadTokens"],
-                    "models": dict(d_stat["models"])
+                    "models": dict(d_stat["models"]),
+                    "modelCosts": {k: round(v, 6) for k, v in d_stat["modelCosts"].items()}
                 }
                 if day in date_set:
                     r = results[day]
@@ -377,6 +412,8 @@ def scan_antigravity_monthly(date_set: set[str], base_dir: Path | None = None, f
                     r["cacheReadTokens"] += d_stat["cacheReadTokens"]
                     for m_name, m_tok in d_stat["models"].items():
                         r["models"][m_name] += m_tok
+                    for m_name, m_cost in d_stat["modelCosts"].items():
+                        r["modelCosts"][m_name] += m_cost
 
             f_cache[file_key] = {
                 "mtime": mtime,
@@ -403,7 +440,8 @@ def scan_codex_monthly(date_set: set[str], base_dir: Path | None = None, file_ca
         "outputTokens": 0,
         "cacheReadTokens": 0,
         "cacheCreationTokens": 0,
-        "models": Counter()
+        "models": Counter(),
+        "modelCosts": Counter()
     })
 
     # 1. Parse history.jsonl
@@ -454,6 +492,8 @@ def scan_codex_monthly(date_set: set[str], base_dir: Path | None = None, file_ca
                         r["cacheCreationTokens"] += data.get("cacheCreationTokens", 0)
                         for m_name, m_tok in data.get("models", {}).items():
                             r["models"][m_name] += m_tok
+                        for m_name, m_cost in data.get("modelCosts", {}).items():
+                            r["modelCosts"][m_name] += m_cost
                 continue
 
             file_daily: dict[str, dict[str, Any]] = defaultdict(lambda: {
@@ -465,7 +505,8 @@ def scan_codex_monthly(date_set: set[str], base_dir: Path | None = None, file_ca
                 "outputTokens": 0,
                 "cacheReadTokens": 0,
                 "cacheCreationTokens": 0,
-                "models": Counter()
+                "models": Counter(),
+                "modelCosts": Counter()
             })
 
             file_date = dt.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d")
@@ -510,9 +551,9 @@ def scan_codex_monthly(date_set: set[str], base_dir: Path | None = None, file_ca
                                 d_stat["cacheCreationTokens"] += cwrite
                                 d_stat["tokens"] += tot
                                 d_stat["models"][file_model] += tot
-                                d_stat["cost"] += codex_scanner.estimate_codex_token_cost(
-                                    file_model, inp, out, cread, cwrite
-                                )
+                                c = codex_scanner.estimate_codex_token_cost(file_model, inp, out, cread, cwrite)
+                                d_stat["cost"] += c
+                                d_stat["modelCosts"][file_model] += c
             except Exception:
                 continue
 
@@ -528,7 +569,8 @@ def scan_codex_monthly(date_set: set[str], base_dir: Path | None = None, file_ca
                     "outputTokens": d_stat["outputTokens"],
                     "cacheReadTokens": d_stat["cacheReadTokens"],
                     "cacheCreationTokens": d_stat["cacheCreationTokens"],
-                    "models": dict(d_stat["models"])
+                    "models": dict(d_stat["models"]),
+                    "modelCosts": {k: round(v, 6) for k, v in d_stat["modelCosts"].items()}
                 }
                 if day in date_set:
                     r = results[day]
@@ -542,6 +584,8 @@ def scan_codex_monthly(date_set: set[str], base_dir: Path | None = None, file_ca
                     r["cacheCreationTokens"] += d_stat["cacheCreationTokens"]
                     for m_name, m_tok in d_stat["models"].items():
                         r["models"][m_name] += m_tok
+                    for m_name, m_cost in d_stat["modelCosts"].items():
+                        r["modelCosts"][m_name] += m_cost
 
             f_cache[file_key] = {
                 "mtime": mtime,
@@ -566,12 +610,14 @@ def aggregate_monthly(
     """Execute complete 30-day cross-agent telemetry aggregation."""
     c_path = cache_path or default_cache_file()
     file_cache: dict[str, Any] = {}
+    # Cached per-file results are only valid for the scan logic and prices they were computed with
+    prices_version = f"{SCAN_VERSION}:{pricing.version()}"
 
     if not force and c_path.exists():
         try:
             with open(c_path, "r", encoding="utf-8") as f:
                 loaded = json.load(f)
-                if isinstance(loaded, dict) and "files" in loaded:
+                if isinstance(loaded, dict) and "files" in loaded and loaded.get("pricesVersion") == prices_version:
                     file_cache = loaded["files"]
         except Exception:
             file_cache = {}
@@ -607,6 +653,7 @@ def aggregate_monthly(
             json.dump({
                 "schemaVersion": 1,
                 "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+                "pricesVersion": prices_version,
                 "files": file_cache
             }, f)
     except Exception:
@@ -692,15 +739,15 @@ def aggregate_monthly(
         for m_name, m_cnt in (c_stat.get("models") or {}).items():
             day_models[m_name] += m_cnt
             all_models[m_name] += m_cnt
-            model_costs[m_name] += claude_scanner.estimate_claude_token_cost(m_name, m_cnt, 0)
+            model_costs[m_name] += float((c_stat.get("modelCosts") or {}).get(m_name, 0.0))
         for m_name, m_cnt in (a_stat.get("models") or {}).items():
             day_models[m_name] += m_cnt
             all_models[m_name] += m_cnt
-            model_costs[m_name] += antigravity_scanner.estimate_antigravity_token_cost(m_name, m_cnt, 0)
+            model_costs[m_name] += float((a_stat.get("modelCosts") or {}).get(m_name, 0.0))
         for m_name, m_cnt in (x_stat.get("models") or {}).items():
             day_models[m_name] += m_cnt
             all_models[m_name] += m_cnt
-            model_costs[m_name] += codex_scanner.estimate_codex_token_cost(m_name, m_cnt, 0)
+            model_costs[m_name] += float((x_stat.get("modelCosts") or {}).get(m_name, 0.0))
 
         top_m = day_models.most_common(1)[0][0] if day_models else ""
 
@@ -830,8 +877,13 @@ def aggregate_monthly(
             "intensity": level
         })
 
+    price_info = pricing.info()
+    # Scans served from the file cache never price tokens, so check names directly
+    price_info["unknownModels"] = sorted(m for m, n in all_models.items() if n > 0 and pricing.lookup(m) is None)
+
     return {
         "schemaVersion": 1,
+        "pricing": price_info,
         "period": {
             "start": date_list[0] if date_list else "",
             "end": date_list[-1] if date_list else "",

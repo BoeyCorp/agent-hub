@@ -19,6 +19,11 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+try:
+    import pricing
+except ImportError:
+    from scripts import pricing
+
 
 def default_base_dir() -> Path:
     return Path(os.environ.get("ANTIGRAVITY_DATA_DIR") or os.path.expanduser("~/.gemini/antigravity-cli"))
@@ -107,39 +112,31 @@ def read_configured_model(base_dir: Path | None = None) -> str:
     return "Gemini 3.8 Flash (High)"
 
 
+_MODEL_SELECTION = re.compile(r"Model Selection` from .*? to (.+?)\.\s*(?:No need|$)")
+
+
+def model_from_step_content(content: Any) -> str:
+    """Model named by a transcript step that records a `Model Selection` change, else ""."""
+    if not isinstance(content, str) or "Model Selection" not in content:
+        return ""
+    match = _MODEL_SELECTION.search(content)
+    if not match:
+        return ""
+    m = sanitize_plain_text(match.group(1).strip().replace("`", ""), 80)
+    if m and len(m) < 60 and not m.lower().startswith("comment") and m.lower() != "none":
+        return m
+    return ""
+
+
 def estimate_antigravity_token_cost(
     model: str,
     input_tokens: int,
     output_tokens: int,
-    cache_read: int = 0
+    cache_read: int = 0,
+    cache_create: int = 0
 ) -> float:
-    m = (model or "").lower()
-    if "claude" in m:
-        if "opus" in m:
-            rate_in, rate_out, rate_cache = 15.00 / 1e6, 75.00 / 1e6, 1.50 / 1e6
-        elif "haiku" in m:
-            rate_in, rate_out, rate_cache = 0.80 / 1e6, 4.00 / 1e6, 0.08 / 1e6
-        else:
-            rate_in, rate_out, rate_cache = 3.00 / 1e6, 15.00 / 1e6, 0.30 / 1e6
-    elif "gpt" in m or "o1" in m or "o3" in m:
-        if "mini" in m:
-            rate_in, rate_out, rate_cache = 0.15 / 1e6, 0.60 / 1e6, 0.075 / 1e6
-        else:
-            rate_in, rate_out, rate_cache = 2.50 / 1e6, 10.00 / 1e6, 1.25 / 1e6
-    elif "pro" in m:
-        # Gemini Pro (1.5 / 2.0 / 2.5 / 3.0 Pro)
-        rate_in, rate_out, rate_cache = 1.25 / 1e6, 5.00 / 1e6, 0.3125 / 1e6
-    elif "flash-lite" in m or "lite" in m:
-        rate_in, rate_out, rate_cache = 0.0375 / 1e6, 0.15 / 1e6, 0.01 / 1e6
-    else:
-        # Gemini Flash (1.5 / 2.0 / 2.5 / 3.0 / 3.8 Flash) and default
-        rate_in, rate_out, rate_cache = 0.075 / 1e6, 0.30 / 1e6, 0.01875 / 1e6
-
-    return (
-        input_tokens * rate_in
-        + output_tokens * rate_out
-        + cache_read * rate_cache
-    )
+    """API-equivalent cost in USD. Prices come from the shared pricing module."""
+    return pricing.cost(model, input_tokens, output_tokens, cache_read, cache_create)
 
 
 def empty_result(base_dir: Path | None = None) -> dict[str, Any]:
@@ -536,12 +533,9 @@ def parse_transcripts(
                             step_day = local_date_from_timestamp(created_at)
 
                             # Model detection
-                            if "Model Selection" in content:
-                                match = re.search(r"Model Selection` from .*? to (.+?)\.\s*(?:No need|$)", content)
-                                if match:
-                                    m = sanitize_plain_text(match.group(1).strip().replace("`", ""), 80)
-                                    if m and len(m) < 60 and not m.lower().startswith("comment"):
-                                        entry_model = m
+                            m = model_from_step_content(content)
+                            if m:
+                                entry_model = m
 
                             total_steps += 1
                             steps_by_date[step_day] += 1
