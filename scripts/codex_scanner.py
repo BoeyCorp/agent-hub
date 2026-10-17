@@ -22,6 +22,11 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+try:
+    import pricing
+except ImportError:
+    from scripts import pricing
+
 
 def default_base_dir() -> Path:
     return Path(os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex"))
@@ -96,25 +101,8 @@ def estimate_codex_token_cost(
     cache_read: int = 0,
     cache_create: int = 0
 ) -> float:
-    m = (model or "").lower()
-    if "mini" in m or "nano" in m:
-        rate_in = 0.15 / 1e6
-        rate_out = 0.60 / 1e6
-        rate_cache_read = 0.075 / 1e6
-        rate_cache_create = 0.15 / 1e6
-    else:
-        # GPT-4o, GPT-5, GPT-6 Luna, o1, etc.
-        rate_in = 2.50 / 1e6
-        rate_out = 10.00 / 1e6
-        rate_cache_read = 1.25 / 1e6
-        rate_cache_create = 2.50 / 1e6
-
-    return (
-        input_tokens * rate_in
-        + output_tokens * rate_out
-        + cache_read * rate_cache_read
-        + cache_create * rate_cache_create
-    )
+    """API-equivalent cost in USD. Prices come from the shared pricing module."""
+    return pricing.cost(model, input_tokens, output_tokens, cache_read, cache_create)
 
 
 def empty_result() -> dict[str, Any]:

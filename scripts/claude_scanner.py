@@ -17,6 +17,11 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+try:
+    import pricing
+except ImportError:
+    from scripts import pricing
+
 
 def default_base_dir() -> Path:
     return Path(os.environ.get("CLAUDE_USAGE_DATA_DIR") or os.path.expanduser("~/.claude"))
@@ -109,30 +114,8 @@ def estimate_claude_token_cost(
     cache_read: int = 0,
     cache_create: int = 0
 ) -> float:
-    m = (model or "").lower()
-    if "opus" in m:
-        rate_in = 15.00 / 1e6
-        rate_out = 75.00 / 1e6
-        rate_cache_read = 1.50 / 1e6
-        rate_cache_create = 18.75 / 1e6
-    elif "haiku" in m:
-        rate_in = 0.80 / 1e6
-        rate_out = 4.00 / 1e6
-        rate_cache_read = 0.08 / 1e6
-        rate_cache_create = 1.00 / 1e6
-    else:
-        # Sonnet (3.5 / 3.7 / 4.x Sonnet) and default
-        rate_in = 3.00 / 1e6
-        rate_out = 15.00 / 1e6
-        rate_cache_read = 0.30 / 1e6
-        rate_cache_create = 3.75 / 1e6
-
-    return (
-        input_tokens * rate_in
-        + output_tokens * rate_out
-        + cache_read * rate_cache_read
-        + cache_create * rate_cache_create
-    )
+    """API-equivalent cost in USD. Prices come from the shared pricing module."""
+    return pricing.cost(model, input_tokens, output_tokens, cache_read, cache_create)
 
 
 def empty_result(base_dir: Path | None = None) -> dict[str, Any]:

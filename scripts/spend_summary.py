@@ -105,6 +105,7 @@ def summarize(analytics: dict[str, Any]) -> dict[str, Any]:
         "byAgentDetail": by_agent_detail,
         "topModels": top_models,
         "cacheSavings": cache_savings,
+        "pricing": analytics.get("pricing") or {},
     }
 
 

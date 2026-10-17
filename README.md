@@ -98,6 +98,11 @@
   - Ranked model tier expenditure breakdown with proportional color-coded progress bars.
 - **Prompt Cache Efficiency & Avoided Cost**:
   - Cache hit rate gauge, cached tokens read volume, and explanation of API cost avoidance.
+- **Live Model Prices**: All costs are API-equivalent estimates (what the same tokens would cost on the pay-per-token API, not what a subscription bills).
+  - Prices are fetched once a day in the background from [OpenRouter](https://openrouter.ai/api/v1/models), with [LiteLLM's price list](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) as a second source and `scripts/pricing.json` as the offline fallback.
+  - Input, output, cache-read, and cache-write tokens each use their own rate. The Spend tab header shows the price source and date.
+  - Models that match no price list count as $0 and are named in the Spend tab. Map such a name to a known price id under `aliases` in `scripts/pricing.json`.
+  - Check prices from the terminal: `python3 scripts/pricing.py --refresh` or `python3 scripts/pricing.py --model "Gemini 4 Argon (Medium)"`.
 
 ### 7. Interactive Session Management & Terminal Launcher
 - **Per-Agent Recent Sessions**: Direct terminal resume lists on each agent tab (Claude, Antigravity, Codex) with styled pills and step counts.
