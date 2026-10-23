@@ -76,6 +76,11 @@ BarWidget {
   readonly property string activeStatus: provider ? provider.activeStatus : "Idle"
   readonly property bool isWorking: provider && provider.activeStatus === "Working"
   readonly property bool isWaiting: provider && (provider.activeStatus === "Waiting" || (provider.hasActiveSession && !isWorking))
+  readonly property bool anyAgentWorking: isWorking || ["claude", "antigravity", "codex"].some(function(id) { return getAgentState(id).working })
+
+  // Working dots blink in steps from one shared timer. A smooth looping
+  // animation redraws the bar on every display frame (~18% CPU at 120 Hz).
+  property bool pulseOn: false
 
   function close() {
     popupOpen = false
@@ -731,6 +736,14 @@ BarWidget {
     onTriggered: root.nowMs = Date.now()
   }
 
+  Timer {
+    interval: 600
+    running: root.anyAgentWorking
+    repeat: true
+    onTriggered: root.pulseOn = !root.pulseOn
+    onRunningChanged: if (!running) root.pulseOn = false
+  }
+
 
   readonly property url iconSource: Qt.resolvedUrl("assets/agent-hub.svg")
 
@@ -925,13 +938,7 @@ BarWidget {
           anchors.margins: -1
           color: root.isWorking ? (root.isLightTheme ? "#059669" : "#10B981") : (root.isWaiting ? (root.isLightTheme ? "#0284C7" : "#38BDF8") : "transparent")
           visible: !chip.multiDotEnabled && root.hasActiveSession
-
-          SequentialAnimation on opacity {
-            running: !chip.multiDotEnabled && root.isWorking
-            loops: Animation.Infinite
-            NumberAnimation { from: 0.3; to: 1.0; duration: 600; easing.type: Easing.InOutQuad }
-            NumberAnimation { from: 1.0; to: 0.3; duration: 600; easing.type: Easing.InOutQuad }
-          }
+          opacity: root.isWorking && !root.pulseOn ? 0.3 : 1.0
         }
       }
 
@@ -966,15 +973,8 @@ BarWidget {
               height: 8
               radius: 4
               color: modelData.color
-              opacity: (st && st.working) ? 0.35 : 0.0
+              opacity: root.pulseOn ? 0.45 : 0.15
               visible: Boolean(st && st.working)
-
-              SequentialAnimation on opacity {
-                running: Boolean(st && st.working)
-                loops: Animation.Infinite
-                NumberAnimation { from: 0.15; to: 0.45; duration: 600; easing.type: Easing.InOutQuad }
-                NumberAnimation { from: 0.45; to: 0.15; duration: 600; easing.type: Easing.InOutQuad }
-              }
             }
 
             // Core status dot
@@ -985,14 +985,7 @@ BarWidget {
               height: 5
               radius: 2.5
               color: (st && st.active) ? modelData.color : root.track
-              opacity: (st && st.active) ? 1.0 : 0.35
-
-              SequentialAnimation on opacity {
-                running: Boolean(st && st.working)
-                loops: Animation.Infinite
-                NumberAnimation { from: 0.4; to: 1.0; duration: 600; easing.type: Easing.InOutQuad }
-                NumberAnimation { from: 1.0; to: 0.4; duration: 600; easing.type: Easing.InOutQuad }
-              }
+              opacity: !(st && st.active) ? 0.35 : ((st.working && !root.pulseOn) ? 0.4 : 1.0)
             }
 
             MouseArea {
